@@ -38,7 +38,7 @@ The site is plain static files at the repository root, so it can be published ei
 
 - **GitHub Actions** (what `.github/workflows/deploy.yml` does): in
   *Settings → Pages → Build and deployment*, set **Source** to **GitHub Actions**. Every push
-  to `main` then publishes the site.
+  to the repository's default branch then publishes the site.
 - **Branch**: set **Source** to **Deploy from a branch**, pick the branch and the `/ (root)`
   folder. The included `.nojekyll` file keeps Jekyll from touching the assets.
 
