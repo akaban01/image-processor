@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Image Converter — format, size &amp; quality</title>
+  <meta name="description" content="Convert images between PNG, JPEG, WebP and AVIF, resize them and tune quality. Runs entirely in your browser — nothing is uploaded.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼️</text></svg>">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1><span aria-hidden="true">🖼️</span> Image Converter</h1>
+    <p class="tagline">Convert, resize and compress images. Everything happens in your browser — no file ever leaves your device.</p>
+  </header>
+
+  <main>
+    <!-- ── Drop zone ─────────────────────────────────────────────── -->
+    <section id="dropzone" class="dropzone" tabindex="0" role="button"
+             aria-label="Add images: click to browse, or drop or paste files here">
+      <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+      </svg>
+      <p class="drop-title">Drop images here</p>
+      <p class="drop-sub">or click to browse &middot; paste with <kbd>Ctrl</kbd>+<kbd>V</kbd></p>
+      <input id="file-input" type="file" accept="image/*" multiple hidden>
+    </section>
+
+    <!-- ── Settings ──────────────────────────────────────────────── -->
+    <section class="panel" aria-labelledby="settings-heading">
+      <h2 id="settings-heading">Settings</h2>
+
+      <div class="settings-grid">
+        <div class="field">
+          <label for="format">Output format</label>
+          <select id="format"></select>
+          <p class="hint" id="format-hint">PNG is lossless. JPEG/WebP/AVIF support a quality setting.</p>
+        </div>
+
+        <div class="field" id="quality-field">
+          <label for="quality">Quality <output id="quality-value">0.85</output></label>
+          <input id="quality" type="range" min="0.05" max="1" step="0.05" value="0.85">
+          <p class="hint">Lower quality means a smaller file.</p>
+        </div>
+
+        <div class="field">
+          <label for="resize-mode">Resize</label>
+          <select id="resize-mode">
+            <option value="none">Keep original size</option>
+            <option value="percent">Scale by percentage</option>
+            <option value="fit">Fit within box</option>
+            <option value="exact">Exact dimensions</option>
+          </select>
+        </div>
+
+        <div class="field resize-opt" data-modes="percent" hidden>
+          <label for="scale">Scale <output id="scale-value">50%</output></label>
+          <input id="scale" type="range" min="1" max="200" step="1" value="50">
+          <p class="hint">100% keeps the original dimensions.</p>
+        </div>
+
+        <div class="field resize-opt" data-modes="fit exact" hidden>
+          <label for="target-width">Width (px)</label>
+          <input id="target-width" type="number" min="1" max="20000" step="1" placeholder="e.g. 1920" inputmode="numeric">
+        </div>
+
+        <div class="field resize-opt" data-modes="fit exact" hidden>
+          <label for="target-height">Height (px)</label>
+          <input id="target-height" type="number" min="1" max="20000" step="1" placeholder="e.g. 1080" inputmode="numeric">
+        </div>
+
+        <div class="field resize-opt" data-modes="fit" hidden>
+          <label class="checkbox">
+            <input id="no-upscale" type="checkbox" checked>
+            <span>Don't enlarge images smaller than the box</span>
+          </label>
+          <p class="hint">Leave width or height blank to constrain only one side.</p>
+        </div>
+
+        <div class="field resize-opt" data-modes="exact" hidden>
+          <label class="checkbox">
+            <input id="keep-aspect" type="checkbox" checked>
+            <span>Keep aspect ratio</span>
+          </label>
+          <p class="hint">With both sides set, the image is cropped to fill.</p>
+        </div>
+
+        <div class="field" id="background-field">
+          <label for="background">Background for transparency</label>
+          <div class="color-row">
+            <input id="background" type="color" value="#ffffff">
+            <span class="hint">Used when saving to a format without an alpha channel (JPEG).</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="convert" class="btn primary" type="button" disabled>Convert</button>
+        <button id="download-all" class="btn" type="button" disabled>Download all (.zip)</button>
+        <button id="clear" class="btn ghost" type="button" disabled>Clear</button>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <!-- ── Results ───────────────────────────────────────────────── -->
+    <section class="panel" id="results-panel" aria-labelledby="results-heading" hidden>
+      <h2 id="results-heading">Images <span id="count" class="count"></span></h2>
+      <ul id="results" class="results"></ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>100% client-side — powered by the Canvas API. No uploads, no tracking, no server.</p>
+  </footer>
+
+  <template id="card-template">
+    <li class="card">
+      <div class="thumb"><img alt="" loading="lazy"></div>
+      <div class="card-body">
+        <p class="card-name" title=""></p>
+        <p class="card-meta original"></p>
+        <p class="card-meta converted"></p>
+        <p class="card-error" hidden></p>
+      </div>
+      <div class="card-actions">
+        <a class="btn small download" download hidden>Download</a>
+        <button class="btn small ghost remove" type="button" aria-label="Remove image">Remove</button>
+      </div>
+    </li>
+  </template>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
