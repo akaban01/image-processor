@@ -1,0 +1,15 @@
+{
+  "name": "image-converter",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Client-side image converter: format, resize, quality and target file size.",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "test:e2e": "playwright test",
+    "serve": "python3 -m http.server 8000"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1"
+  }
+}

@@ -1,59 +1,156 @@
 # Image Converter
 
-A front-end-only image converter: change format, resize, and tune quality entirely in the
-browser. No build step, no dependencies, no server — files never leave the device.
+A client-side image converter: change format, resize, transform, and hit a target file
+size — entirely in the browser. No build step, no runtime dependencies, no server. Files
+never leave the device.
+
+```
+index.html                markup and the settings form
+css/styles.css            styling, light/dark themes
+sw.js                     service worker (offline support)
+js/app.js                 the only file that touches the DOM
+js/worker.js              conversion worker (OffscreenCanvas)
+js/lib/
+  batch.js                runs a set of images with bounded concurrency
+  bytes.js                size formatting and parsing
+  convert.js              orient → resize → encode, for one image
+  encode.js               canvas → Blob, and the target-size search
+  formats.js              format registry and capability probing
+  geometry.js             pure resize/crop maths
+  intake.js               drops, folders, paste, de-duplication
+  naming.js               filename templates and collision handling
+  pipeline.js             worker pool vs. main-thread fallback
+  pool.js                 the worker pool itself
+  render.js               canvas drawing and multi-step downscaling
+  settings.js             defaults, validation, presets, persistence
+  zip.js                  streaming ZIP writer
+test/                     unit tests (node:test)
+test/e2e/                 browser tests (Playwright)
+```
 
 ## Features
 
-- **Formats** — convert to PNG, JPEG, WebP or AVIF. The format list is probed at load time,
-  so only formats the current browser can actually encode are offered.
-- **Quality** — a 0.05–1.00 slider for lossy formats (JPEG/WebP/AVIF).
-- **Resize** — four modes:
-  - *Keep original size*
-  - *Scale by percentage* (1–200%)
-  - *Fit within box* — constrain width, height or both, with an optional "don't enlarge" guard
-  - *Exact dimensions* — stretch to the given size, or keep the aspect ratio and centre-crop
-- **Batch** — drop, browse or paste up to 200 images at once; download them individually or
-  as a single `.zip`.
-- **Quality-preserving downscale** — large reductions are done in halving steps to avoid the
-  aliasing a single-pass `drawImage` produces.
-- **Transparency handling** — pick the background colour used when saving an image with an
-  alpha channel to a format without one (JPEG).
-- EXIF orientation is honoured, settings persist in `localStorage`, and the UI follows the
-  system light/dark theme.
+**Formats** — WebP, AVIF, JPEG and PNG. The list is probed at load time by encoding a
+1×1 canvas, so only formats the browser can genuinely produce are offered; the rest are
+shown greyed out with a reason. A **Smallest** mode encodes every available format and
+keeps whichever came out smallest, per image.
+
+**Target file size** — ask for "under 500 KB" and the quality is binary-searched to the
+highest value that fits, typically in 4–8 encodes. If even the lowest quality overshoots,
+the image is progressively scaled down instead of being pushed into blocking artefacts.
+
+**Resize** — five modes: limit the longest edge, fit inside a box, fill a box and crop to
+a nine-point anchor, scale by percentage, or stretch to exact dimensions. "Never enlarge"
+leaves already-small images alone.
+
+**Transform** — rotate in quarter turns and flip on either axis. EXIF orientation is
+applied on decode, so photos shot in portrait convert the way they were taken.
+
+**Batch** — drop files *or folders*, browse, or paste. Conversions run in parallel across
+a pool of workers, one per core (up to four), with per-image progress and a cancel button
+that stops work immediately. Download individually or as a single `.zip`.
+
+**Quality-preserving downscale** — large reductions are done in halving steps rather than
+one jump, which is what stops a 4000px photo turning crunchy at 200px.
+
+**Filename patterns** — `{name}`, `{ext}`, `{w}`, `{h}`, `{format}`, `{index}`, `{date}`.
+Collisions get a `-2` suffix; path separators and reserved names are stripped.
+
+**Presets** for the common jobs: web page, thumbnail, email attachment, social card,
+archive quality.
+
+Settings and theme persist in `localStorage`, the UI follows the system theme unless told
+otherwise, and the whole app works offline once visited.
+
+### Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>O</kbd> | Add files |
+| <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>V</kbd> | Paste images |
+| <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Enter</kbd> | Convert |
+| <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd> | Download all |
+| <kbd>Esc</kbd> | Cancel a running batch |
+
+## How it works
+
+Decoding a large photo and re-encoding it as AVIF is hundreds of milliseconds of blocking
+work, so it happens off the main thread:
+
+```
+File ──► WorkerPool ──► worker.js ──► createImageBitmap (EXIF-aware)
+                                 └──► rotate/flip ──► crop ──► halving downscale
+                                 └──► encode (+ size search)  ──► Blob
+```
+
+Two fallbacks keep it honest. A browser without `OffscreenCanvas` runs the identical
+pipeline on the main thread — `js/lib/convert.js` takes a `createCanvas` factory precisely
+so there is one implementation rather than two. And SVG, which no browser can decode in a
+worker, is decoded with an `<img>` element on the main thread and converted there.
+
+`canvas.toBlob` silently returns a PNG when asked for a format it does not know, which
+would hand you a `.avif` file that is really a PNG. Every encode checks the resulting
+blob's type and fails loudly instead.
+
+The ZIP writer stores rather than deflates — every format here is already entropy-coded,
+so deflate would cost CPU and usually add bytes. Entry data is never read into a
+`Uint8Array`: only the CRC pass touches it, in 1 MiB slices, and the archive is assembled
+from the original `Blob` references, so a multi-gigabyte batch stays backed by the
+browser's blob store rather than the JS heap. Zip64 records are emitted when the archive
+outgrows the 32-bit fields.
 
 ## Running locally
 
-ES modules need a real HTTP origin, so open it through any static server rather than
+ES modules and workers both need a real HTTP origin, so serve it rather than opening
 `file://`:
 
 ```bash
-python3 -m http.server 8000
+python3 -m http.server 8000   # or: npm run serve
 # then visit http://localhost:8000
 ```
 
+## Tests
+
+```bash
+npm test          # unit tests — no dependencies, no browser
+npm run test:e2e  # browser tests (installs Playwright's Chromium on first run)
+```
+
+The unit suite covers the pure modules: resize geometry across every mode and edge case,
+the target-size search, filename templating and sanitisation, settings validation, batch
+concurrency and cancellation, and the ZIP writer — whose output is additionally verified
+by the system `unzip` when it is installed.
+
+The browser suite drives the real app in Chromium against real PNG fixtures generated by
+a small encoder in `test/e2e/fixtures.js`, and asserts on actual output dimensions,
+formats and filenames. It fails the run on any console error.
+
+Both run in CI on every push (`.github/workflows/ci.yml`), and the unit suite gates
+deployment.
+
 ## Deploying to GitHub Pages
 
-The site is plain static files at the repository root, so it can be published either way:
+The site is plain static files at the repository root:
 
-- **GitHub Actions** (what `.github/workflows/deploy.yml` does): in
-  *Settings → Pages → Build and deployment*, set **Source** to **GitHub Actions**. Every push
-  to the repository's default branch then publishes the site.
-- **Branch**: set **Source** to **Deploy from a branch**, pick the branch and the `/ (root)`
-  folder. The included `.nojekyll` file keeps Jekyll from touching the assets.
+- **GitHub Actions** (what `.github/workflows/deploy.yml` does): in *Settings → Pages →
+  Build and deployment*, set **Source** to **GitHub Actions**. Every push to the default
+  branch publishes the site once the unit tests pass.
+- **Branch**: set **Source** to **Deploy from a branch**, pick the branch and `/ (root)`.
+  The `.nojekyll` file keeps Jekyll from touching the assets.
 
-## Project layout
-
-```
-index.html          markup and the settings form
-css/styles.css      styling, light/dark themes
-js/app.js           UI wiring: file intake, list rendering, batch run, downloads
-js/converter.js     decode → resize geometry → canvas draw → encode
-js/zip.js           minimal store-only ZIP writer for "Download all"
-```
+The service worker registers only over HTTPS, so offline support is live on Pages and
+inert on a plain-HTTP local server.
 
 ## Browser support
 
-Needs `canvas.toBlob`, ES modules and `createImageBitmap` — Chrome/Edge 79+, Firefox 90+,
-Safari 15+. WebP encoding is available in all current browsers; AVIF encoding is not
-universal and is hidden automatically where it is missing.
+Needs `canvas.toBlob`, ES modules and `createImageBitmap`: Chrome/Edge 79+, Firefox 90+,
+Safari 15+. The parallel worker pipeline additionally needs `OffscreenCanvas`
+(Chrome 69+, Firefox 105+, Safari 16.4+); older browsers fall back to the main thread and
+say so in the footer. WebP encoding is available everywhere current; AVIF encoding is not,
+and is hidden automatically where it is missing.
+
+## Privacy
+
+There is no server, no analytics, no network request of any kind after the page loads.
+Conversions run on the CPU in the tab. As a side effect of going through a canvas, all
+metadata — EXIF, GPS coordinates, camera serial numbers — is dropped from the output.

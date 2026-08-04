@@ -14,9 +14,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A cheap gate: the unit suite needs no dependencies and no browser, so it
+  # costs seconds and keeps an obviously broken build off the live site.
+  test:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
   deploy:
     # Publish only the default branch, whatever it happens to be named.
     if: github.ref_name == github.event.repository.default_branch
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -27,6 +40,8 @@ jobs:
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
+          # Everything the site needs is at the repository root; the test and
+          # tooling files are harmless dead weight but small enough to ignore.
           path: .
       - id: deployment
         uses: actions/deploy-pages@v4
