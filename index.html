@@ -3,128 +3,294 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Image Converter — format, size &amp; quality</title>
-  <meta name="description" content="Convert images between PNG, JPEG, WebP and AVIF, resize them and tune quality. Runs entirely in your browser — nothing is uploaded.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼️</text></svg>">
+  <title>Image Converter — convert, resize and compress in your browser</title>
+  <meta name="description" content="Convert images to WebP, AVIF, JPEG or PNG, resize them, and hit a target file size. Runs entirely in your browser — nothing is uploaded.">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f5f6f9" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#settings-heading">Skip to settings</a>
+
   <header class="topbar">
-    <h1><span aria-hidden="true">🖼️</span> Image Converter</h1>
-    <p class="tagline">Convert, resize and compress images. Everything happens in your browser — no file ever leaves your device.</p>
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="2.5" y="5.5" width="27" height="21" rx="4"/>
+        <circle cx="11" cy="13" r="2.6" class="fill"/>
+        <path d="M4 22.5 12 15l6 5.5 4-3.5 6 5.5"/>
+      </svg>
+      <div>
+        <h1>Image Converter</h1>
+        <p class="tagline">Convert, resize and compress — entirely on your device.</p>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <button id="install" class="btn ghost small" type="button" hidden>Install app</button>
+      <div class="theme-toggle" role="radiogroup" aria-label="Colour theme">
+        <button type="button" data-theme="auto" role="radio" aria-checked="true" title="Match system">Auto</button>
+        <button type="button" data-theme="light" role="radio" aria-checked="false" title="Light theme">Light</button>
+        <button type="button" data-theme="dark" role="radio" aria-checked="false" title="Dark theme">Dark</button>
+      </div>
+    </div>
   </header>
 
   <main>
-    <!-- ── Drop zone ─────────────────────────────────────────────── -->
+    <!-- ── Intake ────────────────────────────────────────────────── -->
     <section id="dropzone" class="dropzone" tabindex="0" role="button"
-             aria-label="Add images: click to browse, or drop or paste files here">
+             aria-label="Add images: click to browse, or drop files and folders here">
       <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
       </svg>
-      <p class="drop-title">Drop images here</p>
-      <p class="drop-sub">or click to browse &middot; paste with <kbd>Ctrl</kbd>+<kbd>V</kbd></p>
+      <p class="drop-title">Drop images or folders here</p>
+      <p class="drop-sub">
+        or click to browse &middot; paste with <kbd>Ctrl</kbd><kbd>V</kbd>
+      </p>
       <input id="file-input" type="file" accept="image/*" multiple hidden>
+    </section>
+
+    <!-- ── Presets ───────────────────────────────────────────────── -->
+    <section class="panel presets-panel" aria-labelledby="presets-heading">
+      <h2 id="presets-heading">Presets</h2>
+      <div id="presets" class="presets"></div>
     </section>
 
     <!-- ── Settings ──────────────────────────────────────────────── -->
     <section class="panel" aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
 
-      <div class="settings-grid">
-        <div class="field">
-          <label for="format">Output format</label>
-          <select id="format"></select>
-          <p class="hint" id="format-hint">PNG is lossless. JPEG/WebP/AVIF support a quality setting.</p>
-        </div>
+      <fieldset class="group">
+        <legend>Output</legend>
+        <div class="settings-grid">
+          <div class="field">
+            <label for="format">Format</label>
+            <select id="format"></select>
+            <p class="hint" id="format-hint"></p>
+          </div>
 
-        <div class="field" id="quality-field">
-          <label for="quality">Quality <output id="quality-value">0.85</output></label>
-          <input id="quality" type="range" min="0.05" max="1" step="0.05" value="0.85">
-          <p class="hint">Lower quality means a smaller file.</p>
-        </div>
+          <div class="field" id="quality-field">
+            <label for="quality">
+              <span id="quality-label">Quality</span>
+              <output id="quality-value" for="quality">0.82</output>
+            </label>
+            <input id="quality" type="range" min="0.05" max="1" step="0.01" value="0.82">
+            <p class="hint" id="quality-hint">Lower quality, smaller file.</p>
+          </div>
 
-        <div class="field">
-          <label for="resize-mode">Resize</label>
-          <select id="resize-mode">
-            <option value="none">Keep original size</option>
-            <option value="percent">Scale by percentage</option>
-            <option value="fit">Fit within box</option>
-            <option value="exact">Exact dimensions</option>
-          </select>
-        </div>
-
-        <div class="field resize-opt" data-modes="percent" hidden>
-          <label for="scale">Scale <output id="scale-value">50%</output></label>
-          <input id="scale" type="range" min="1" max="200" step="1" value="50">
-          <p class="hint">100% keeps the original dimensions.</p>
-        </div>
-
-        <div class="field resize-opt" data-modes="fit exact" hidden>
-          <label for="target-width">Width (px)</label>
-          <input id="target-width" type="number" min="1" max="20000" step="1" placeholder="e.g. 1920" inputmode="numeric">
-        </div>
-
-        <div class="field resize-opt" data-modes="fit exact" hidden>
-          <label for="target-height">Height (px)</label>
-          <input id="target-height" type="number" min="1" max="20000" step="1" placeholder="e.g. 1080" inputmode="numeric">
-        </div>
-
-        <div class="field resize-opt" data-modes="fit" hidden>
-          <label class="checkbox">
-            <input id="no-upscale" type="checkbox" checked>
-            <span>Don't enlarge images smaller than the box</span>
-          </label>
-          <p class="hint">Leave width or height blank to constrain only one side.</p>
-        </div>
-
-        <div class="field resize-opt" data-modes="exact" hidden>
-          <label class="checkbox">
-            <input id="keep-aspect" type="checkbox" checked>
-            <span>Keep aspect ratio</span>
-          </label>
-          <p class="hint">With both sides set, the image is cropped to fill.</p>
-        </div>
-
-        <div class="field" id="background-field">
-          <label for="background">Background for transparency</label>
-          <div class="color-row">
-            <input id="background" type="color" value="#ffffff">
-            <span class="hint">Used when saving to a format without an alpha channel (JPEG).</span>
+          <div class="field">
+            <label class="checkbox">
+              <input id="target-enabled" type="checkbox">
+              <span>Target file size</span>
+            </label>
+            <div class="inline-field" id="target-row" hidden>
+              <label class="visually-hidden" for="target-size">Maximum file size</label>
+              <input id="target-size" type="text" inputmode="decimal" value="500 KB"
+                     placeholder="500 KB" aria-describedby="target-hint" size="10">
+            </div>
+            <p class="hint" id="target-hint">
+              Quality is searched automatically, then dimensions are reduced if needed.
+            </p>
           </div>
         </div>
-      </div>
+      </fieldset>
 
-      <div class="actions">
+      <fieldset class="group">
+        <legend>Resize</legend>
+        <div class="settings-grid">
+          <div class="field">
+            <label for="resize-mode">Mode</label>
+            <select id="resize-mode">
+              <option value="none">Keep original size</option>
+              <option value="longest">Limit longest edge</option>
+              <option value="fit">Fit inside a box</option>
+              <option value="cover">Fill a box and crop</option>
+              <option value="percent">Scale by percentage</option>
+              <option value="exact">Exact dimensions</option>
+            </select>
+            <p class="hint" id="resize-hint"></p>
+          </div>
+
+          <div class="field resize-opt" data-modes="longest" hidden>
+            <label for="edge">Longest edge (px)</label>
+            <input id="edge" type="number" min="1" max="16384" step="1" value="1920" inputmode="numeric">
+          </div>
+
+          <div class="field resize-opt" data-modes="percent" hidden>
+            <label for="scale">Scale <output id="scale-value" for="scale">50%</output></label>
+            <input id="scale" type="range" min="1" max="400" step="1" value="50">
+          </div>
+
+          <div class="field resize-opt" data-modes="fit cover exact" hidden>
+            <label for="target-width">Width (px)</label>
+            <input id="target-width" type="number" min="0" max="16384" step="1" placeholder="1920" inputmode="numeric">
+          </div>
+
+          <div class="field resize-opt" data-modes="fit cover exact" hidden>
+            <label for="target-height">Height (px)</label>
+            <input id="target-height" type="number" min="0" max="16384" step="1" placeholder="1080" inputmode="numeric">
+          </div>
+
+          <div class="field resize-opt" data-modes="cover" hidden>
+            <label for="position">Crop anchor</label>
+            <select id="position">
+              <option value="top-left">Top left</option>
+              <option value="top">Top</option>
+              <option value="top-right">Top right</option>
+              <option value="left">Left</option>
+              <option value="center" selected>Centre</option>
+              <option value="right">Right</option>
+              <option value="bottom-left">Bottom left</option>
+              <option value="bottom">Bottom</option>
+              <option value="bottom-right">Bottom right</option>
+            </select>
+          </div>
+
+          <div class="field resize-opt" data-modes="longest fit cover" hidden>
+            <label class="checkbox">
+              <input id="no-upscale" type="checkbox" checked>
+              <span>Never enlarge</span>
+            </label>
+            <p class="hint">Images already smaller than the target are left alone.</p>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Transform</legend>
+        <div class="settings-grid">
+          <div class="field">
+            <label id="rotate-label">Rotate</label>
+            <div class="segmented" role="radiogroup" aria-labelledby="rotate-label">
+              <button type="button" data-rotate="0" role="radio" aria-checked="true">0°</button>
+              <button type="button" data-rotate="90" role="radio" aria-checked="false">90°</button>
+              <button type="button" data-rotate="180" role="radio" aria-checked="false">180°</button>
+              <button type="button" data-rotate="270" role="radio" aria-checked="false">270°</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label id="flip-label">Flip</label>
+            <div class="segmented" role="group" aria-labelledby="flip-label">
+              <button type="button" id="flip-h" aria-pressed="false">Horizontal</button>
+              <button type="button" id="flip-v" aria-pressed="false">Vertical</button>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+
+      <details class="group advanced">
+        <summary>Advanced</summary>
+        <div class="settings-grid">
+          <div class="field" id="background-field">
+            <label for="background">Background for transparency</label>
+            <div class="color-row">
+              <input id="background" type="color" value="#ffffff">
+              <span class="hint">Used when the output format has no alpha channel (JPEG).</span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="template">Filename pattern</label>
+            <input id="template" type="text" value="{name}.{ext}" spellcheck="false" autocomplete="off">
+            <p class="hint">
+              <code>{name}</code> <code>{ext}</code> <code>{w}</code> <code>{h}</code>
+              <code>{format}</code> <code>{index}</code> <code>{date}</code>
+            </p>
+          </div>
+
+          <div class="field">
+            <label>Reset</label>
+            <button id="reset" class="btn ghost" type="button">Restore defaults</button>
+            <p class="hint">Clears saved settings and returns every control to its default.</p>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- ── Run bar ───────────────────────────────────────────────── -->
+    <div class="runbar" id="runbar">
+      <div class="runbar-actions">
         <button id="convert" class="btn primary" type="button" disabled>Convert</button>
-        <button id="download-all" class="btn" type="button" disabled>Download all (.zip)</button>
+        <button id="cancel" class="btn danger" type="button" hidden>Cancel</button>
+        <button id="download-all" class="btn" type="button" disabled>Download all</button>
         <button id="clear" class="btn ghost" type="button" disabled>Clear</button>
       </div>
-      <p id="status" class="status" role="status" aria-live="polite"></p>
-    </section>
+      <div class="runbar-progress">
+        <div class="progress" id="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="0" aria-label="Conversion progress" hidden>
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+        <p id="advice" class="advice" hidden></p>
+      </div>
+    </div>
 
     <!-- ── Results ───────────────────────────────────────────────── -->
     <section class="panel" id="results-panel" aria-labelledby="results-heading" hidden>
-      <h2 id="results-heading">Images <span id="count" class="count"></span></h2>
+      <div class="results-head">
+        <h2 id="results-heading">Images <span id="count" class="count"></span></h2>
+        <p id="savings" class="savings" hidden></p>
+      </div>
       <ul id="results" class="results"></ul>
     </section>
   </main>
 
   <footer>
-    <p>100% client-side — powered by the Canvas API. No uploads, no tracking, no server.</p>
+    <p>
+      100% client-side. No uploads, no tracking, no server — your images never leave this device.
+    </p>
+    <p class="shortcuts">
+      <kbd>Ctrl</kbd><kbd>O</kbd> add files &middot;
+      <kbd>Ctrl</kbd><kbd>Enter</kbd> convert &middot;
+      <kbd>Ctrl</kbd><kbd>S</kbd> download all &middot;
+      <kbd>Esc</kbd> cancel
+    </p>
+    <p id="engine" class="engine"></p>
   </footer>
 
+  <!-- Full-window drop affordance, shown while a drag is in progress. -->
+  <div id="drop-overlay" class="drop-overlay" hidden aria-hidden="true">
+    <div class="drop-overlay-inner">Drop to add images</div>
+  </div>
+
+  <!-- ── Before/after comparison ─────────────────────────────────── -->
+  <dialog id="compare" class="compare" aria-labelledby="compare-title">
+    <div class="compare-head">
+      <h2 id="compare-title">Compare</h2>
+      <button id="compare-close" class="btn ghost small" type="button" aria-label="Close comparison">Close</button>
+    </div>
+    <div class="compare-stage" id="compare-stage">
+      <img id="compare-before" alt="Original image">
+      <img id="compare-after" class="compare-after" alt="Converted image">
+      <div class="compare-handle" aria-hidden="true"></div>
+    </div>
+    <label class="visually-hidden" for="compare-range">Comparison position</label>
+    <input id="compare-range" type="range" min="0" max="100" value="50">
+    <div class="compare-meta">
+      <span id="compare-before-meta"></span>
+      <span id="compare-after-meta"></span>
+    </div>
+  </dialog>
+
   <template id="card-template">
-    <li class="card">
-      <div class="thumb"><img alt="" loading="lazy"></div>
+    <li class="card" data-state="pending">
+      <button class="thumb" type="button" aria-label="Compare before and after">
+        <img alt="" loading="lazy" decoding="async">
+        <span class="thumb-spinner" aria-hidden="true"></span>
+      </button>
       <div class="card-body">
         <p class="card-name" title=""></p>
         <p class="card-meta original"></p>
         <p class="card-meta converted"></p>
-        <p class="card-error" hidden></p>
+        <p class="card-note" hidden></p>
+        <p class="card-error" role="alert" hidden></p>
       </div>
       <div class="card-actions">
         <a class="btn small download" download hidden>Download</a>
-        <button class="btn small ghost remove" type="button" aria-label="Remove image">Remove</button>
+        <button class="btn small ghost remove" type="button">Remove</button>
       </div>
     </li>
   </template>
