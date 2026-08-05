@@ -65,7 +65,11 @@
       <div class="settings-grid">
         <div class="field">
           <label for="document-standard">Photo standard</label>
-          <select id="document-standard"></select>
+          <!-- Replaced with the full list on load; authored here so the
+               control is never an empty box if the script has not run yet. -->
+          <select id="document-standard">
+            <option value="none">None — my own settings</option>
+          </select>
           <p class="hint" id="document-hint">
             Pick a standard to size, crop and compress every photo to that
             document's rules.
@@ -127,7 +131,8 @@
                      placeholder="500 KB" aria-describedby="target-hint" size="10">
             </div>
             <p class="hint" id="target-hint">
-              Quality is searched automatically, then dimensions are reduced if needed.
+              Quality is searched down towards 0.20 automatically, then dimensions
+              are reduced if needed.
             </p>
           </div>
         </div>

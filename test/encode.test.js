@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { pickSmallest, searchQuality } from '../js/lib/encode.js';
+import { MIN_SEARCH_QUALITY, pickSmallest, searchQuality } from '../js/lib/encode.js';
 
 /**
  * A stand-in encoder whose output size rises with quality, which is how every
@@ -51,6 +51,18 @@ test('a budget nothing can meet is reported rather than hidden', async () => {
   assert.equal(result.withinBudget, false);
   assert.equal(result.quality, 0.2, 'gives back the smallest it managed');
   assert.equal(result.attempts, 2, 'stops after probing the ceiling and the floor');
+});
+
+test('the floor the search stops at is the one the UI quotes', async () => {
+  // The hint under the quality slider names this number, so a change here has
+  // to be a deliberate one rather than a drifting default.
+  const encoder = fakeEncoder({ floor: 900_000 });
+  const result = await searchQuality({ encode: encoder.encode, budget: 100_000, max: 0.95 });
+
+  assert.equal(MIN_SEARCH_QUALITY, 0.2);
+  assert.equal(Math.min(...encoder.calls), MIN_SEARCH_QUALITY, 'never asked for less');
+  assert.equal(result.quality, MIN_SEARCH_QUALITY);
+  assert.equal(result.withinBudget, false);
 });
 
 test('the search is bounded and never repeats a quality', async () => {

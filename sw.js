@@ -2,14 +2,20 @@
  * Service worker: makes the converter work offline.
  *
  * The app is a few dozen kilobytes of static files with no API calls, so the
- * whole thing is precached on install. Navigations fall back to the cached
- * shell; everything else is stale-while-revalidate, which keeps the app
- * instant while still picking up a new deploy on the next visit.
+ * whole thing is precached on install and served from the network with the
+ * cache as the fallback. Offline still works; online always gets the deploy
+ * that is actually live.
+ *
+ * It used to be stale-while-revalidate, which is faster but hands back one
+ * version behind. A navigation is network-first, so a deploy could pair the
+ * new index.html with the previous app.js — which looks like a control the
+ * markup declares and the script never fills in, on exactly one page load per
+ * deploy. Cheap to lose a cached-response head start; expensive to debug.
  *
  * Bump CACHE when the file list changes — the old cache is deleted on activate.
  */
 
-const CACHE = 'image-converter-v4';
+const CACHE = 'image-converter-v5';
 
 const PRECACHE = [
   './',
@@ -58,23 +64,20 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
-async function staleWhileRevalidate(request) {
+async function networkFirst(request) {
   const cache = await caches.open(CACHE);
-  const cached = await cache.match(request);
 
-  const network = fetch(request)
-    .then((response) => {
-      if (response && response.ok && response.type === 'basic') {
-        cache.put(request, response.clone());
-      }
-      return response;
-    })
-    .catch(() => null);
-
-  const response = cached || (await network);
-  if (response) return response;
-
-  throw new Error('Offline and not cached');
+  try {
+    const response = await fetch(request);
+    if (response && response.ok && response.type === 'basic') {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw new Error('Offline and not cached');
+  }
 }
 
 self.addEventListener('fetch', (event) => {
@@ -100,5 +103,5 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(staleWhileRevalidate(request));
+  event.respondWith(networkFirst(request));
 });

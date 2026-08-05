@@ -7,6 +7,7 @@
 
 import { AUTO_FORMAT, AUTO_MIME, FORMATS, formatByMime, supportedFormats } from './lib/formats.js';
 import { formatBytes, parseByteSize, sizeDelta } from './lib/bytes.js';
+import { MIN_SEARCH_QUALITY } from './lib/encode.js';
 import { createZip } from './lib/zip.js';
 import { createPipeline } from './lib/pipeline.js';
 import { runBatch } from './lib/batch.js';
@@ -234,9 +235,14 @@ function syncUI() {
   el.qualityField.hidden = !lossy;
   el.backgroundField.hidden = !needsBackground;
   el.qualityValue.textContent = Number(settings.quality).toFixed(2);
-  el.qualityLabel.textContent = settings.targetEnabled ? 'Maximum quality' : 'Quality';
+  el.qualityLabel.textContent = settings.targetEnabled ? 'Quality ceiling' : 'Quality';
+  // With a budget in play this slider is a limit, not the quality that gets
+  // used — and lowering it does nothing at all once the search has bottomed
+  // out, which reads as a broken control unless the hint says so outright.
   el.qualityHint.textContent = settings.targetEnabled
-    ? 'The search never goes above this, and stops as soon as the file fits.'
+    ? `A limit, not the quality used: the search starts here and works down to `
+      + `${MIN_SEARCH_QUALITY.toFixed(2)}, then shrinks the image. Lowering it will not `
+      + 'shrink a file that already misses the target.'
     : 'Lower quality, smaller file.';
   el.scaleValue.textContent = `${settings.resize.scale}%`;
   el.formatHint.textContent = format?.blurb || '';
@@ -540,7 +546,12 @@ function updateItem(item) {
   converted.append(badge);
 
   const notes = [];
-  if (result.withinBudget === false) notes.push('Could not reach the target size.');
+  if (result.withinBudget === false) {
+    notes.push(
+      'Could not reach the target size, even at the lowest quality the search will use. '
+      + 'Reduce the dimensions under Resize, or try WebP.',
+    );
+  }
   if (result.rescaled) notes.push('Scaled down further to fit the size budget.');
   if (result.clamped) notes.push('Reduced to stay within this browser’s canvas limit.');
   noteEl.hidden = !notes.length;

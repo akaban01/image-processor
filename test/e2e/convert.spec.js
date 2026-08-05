@@ -193,6 +193,45 @@ test('applies a preset', async ({ page }) => {
   expect(converted).toMatchObject({ width: 400, height: 400 });
 });
 
+test('the photo standard picker offers every standard', async ({ page }) => {
+  // An empty picker is what a stale cached script looks like, so the count is
+  // asserted rather than just the app not crashing.
+  const options = page.locator('#document-standard option');
+  await expect(options).toHaveCount(4);
+  await expect(options.first()).toHaveAttribute('value', 'none');
+  await expect(options.nth(1)).toHaveAttribute('value', 'umrah-hajj-evisa');
+  await expect(page.locator('#document-standard')).toHaveValue('none');
+});
+
+test('the quality slider says it is only a ceiling once a target is set', async ({ page }) => {
+  await expect(page.locator('#quality-label')).toHaveText('Quality');
+  await expect(page.locator('#quality-hint')).toHaveText('Lower quality, smaller file.');
+
+  await page.check('#target-enabled');
+  await expect(page.locator('#quality-label')).toHaveText('Quality ceiling');
+  await expect(page.locator('#quality-hint')).toContainText('not the quality used');
+  await expect(page.locator('#quality-hint')).toContainText('0.20');
+  await expect(page.locator('#quality-hint')).toContainText('will not shrink a file');
+
+  await page.uncheck('#target-enabled');
+  await expect(page.locator('#quality-label')).toHaveText('Quality');
+});
+
+test('a target that cannot be met says what to do about it', async ({ page }) => {
+  await addImages(page, [pngUpload('noisy.png', { width: 1400, height: 1000 })]);
+
+  await page.selectOption('#format', 'image/jpeg');
+  await page.check('#target-enabled');
+  await page.fill('#target-size', '1 KB');
+  await page.locator('#target-size').blur();
+  await convert(page);
+
+  const note = firstCard(page).locator('.card-note');
+  await expect(note).toBeVisible();
+  await expect(note).toContainText('Could not reach the target size');
+  await expect(note).toContainText('Reduce the dimensions');
+});
+
 test('the Umrah / Hajj eVisa standard produces a photo that meets the spec', async ({ page }) => {
   await addImages(page, [pngUpload('pilgrim.png', { width: 900, height: 1200 })]);
 
