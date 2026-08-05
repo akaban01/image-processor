@@ -71,7 +71,9 @@ image is then checked against the standard and marked pass or fail, alongside th
 only a person can judge — background, lighting, how the face is framed. **Take a photo**
 opens the device camera with a head outline drawn on the standard's own grid — crown
 ticks, an eye line, and a shaded band the chin has to land in — and captures exactly the
-rectangle you framed, so the crop holds no surprises. The capture is converted
+rectangle you framed, so the crop holds no surprises. The preview is mirrored, the way a
+mirror is, so leaning right moves you right; the file never is, because a document photo
+has to be a true likeness. The capture is converted
 immediately, giving a finished photo in two clicks. **Replace the background** floods in
 from the edges of the frame and repaints everything it reaches — the wall goes white while
 the person stays put. It is a matte, not a segmentation model: it works on a plain, evenly

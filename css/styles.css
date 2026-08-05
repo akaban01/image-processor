@@ -516,6 +516,13 @@ output { font-variant-numeric: tabular-nums; font-weight: 650; }
   object-fit: cover;
 }
 
+/*
+ * The preview only. `drawImage` samples the track rather than the rendered
+ * element, so this never reaches the captured file — which is the point: a
+ * document photo must not be a mirror image, and a preview must be one.
+ */
+.camera-stage video.mirrored { transform: scaleX(-1); }
+
 .camera-guide {
   position: absolute;
   inset: 0;
