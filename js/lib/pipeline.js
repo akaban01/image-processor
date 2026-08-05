@@ -59,8 +59,21 @@ async function decodeWithImageElement(file) {
   return { source: img, release: () => URL.revokeObjectURL(url) };
 }
 
-async function convertOnMainThread(file, settings, signal) {
+async function convertOnMainThread(file, settings, signal, bitmap = null) {
   await nextFrame();
+
+  if (bitmap) {
+    try {
+      return await convertSource(bitmap, settings, {
+        createCanvas: createDomCanvas,
+        signal,
+        matted: true,
+      });
+    } finally {
+      bitmap.close?.();
+    }
+  }
+
   const { source, release } = await decodeWithImageElement(file);
   try {
     return await convertSource(source, settings, { createCanvas: createDomCanvas, signal });
@@ -91,21 +104,28 @@ export function createPipeline(options = {}) {
     mode: useWorkers ? 'worker' : 'main',
     concurrency: useWorkers ? (options.size || defaultPoolSize()) : 1,
 
-    async convert(file, settings, { signal, onStart } = {}) {
+    async convert(file, settings, { signal, onStart, bitmap = null } = {}) {
       if (pool) {
         try {
-          return await pool.run({ file, settings }, { signal, onStart });
+          return await pool.run(
+            { file, bitmap, settings, matted: Boolean(bitmap) },
+            // The bitmap is transferred rather than copied: it can be tens of
+            // megabytes, and nothing on this side needs it afterwards.
+            { signal, onStart, transfer: bitmap ? [bitmap] : [] },
+          );
         } catch (error) {
           if (error?.name === 'AbortError') throw error;
           // Only a decode failure is worth a second attempt; an encoder that
-          // does not exist will not appear on the main thread either.
-          if (error?.code !== 'DECODE_FAILED') throw error;
+          // does not exist will not appear on the main thread either. A
+          // transferred bitmap is also gone by now, so there is nothing left
+          // to retry with.
+          if (error?.code !== 'DECODE_FAILED' || bitmap) throw error;
         }
       } else {
         onStart?.();
       }
 
-      return convertOnMainThread(file, settings, signal);
+      return convertOnMainThread(file, settings, signal, bitmap);
     },
 
     cancelAll() {

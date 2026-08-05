@@ -41,6 +41,7 @@ async function handleConvert(payload) {
     const result = await convertSource(source, payload.settings, {
       createCanvas,
       signal: controller.signal,
+      matted: Boolean(payload.matted),
     });
     self.postMessage({ type: 'done', id: payload.id, result });
   } catch (error) {

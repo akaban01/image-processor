@@ -70,6 +70,9 @@ export async function runBatch({
       const result = await pipeline.convert(item.file, settings, {
         signal,
         onStart: () => onStart?.(item),
+        // Set when the background has already been replaced upstream, on a
+        // decoded bitmap the pipeline should use instead of the file.
+        bitmap: item.bitmap || null,
       });
 
       const extension = result.extension || extensionFor(result.mime);

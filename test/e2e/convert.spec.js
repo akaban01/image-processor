@@ -291,7 +291,19 @@ test('a standard survives a reload, and settings that drift from it are flagged'
   await expect(page.locator('#document-drift')).toBeHidden();
 });
 
+/**
+ * Cut the model off at the network so the flood-fill fallback runs.
+ *
+ * The pixel-level guarantees below belong to the fallback: it is deterministic
+ * on a synthetic fixture, where a portrait matting model — trained on people —
+ * has no business being asked for an opinion.
+ */
+async function withoutModel(page) {
+  await page.route('**/vendor/**', (route) => route.abort());
+}
+
 test('the background is replaced with the standard’s white', async ({ page }) => {
+  await withoutModel(page);
   await addImages(page, [portraitUpload('me.png', { width: 400, height: 400 })]);
 
   await page.selectOption('#document-standard', 'umrah-hajj-evisa');
@@ -299,7 +311,9 @@ test('the background is replaced with the standard’s white', async ({ page }) 
   await expect(page.locator('#tolerance-row')).toBeHidden();
 
   await page.check('#remove-background');
-  await expect(page.locator('#tolerance-row')).toBeVisible();
+  // The slider is the fallback's knob, so it appears only once the model has
+  // failed — which is also how the user learns which matte they are getting.
+  await expect(page.locator('#tolerance-row')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('#tolerance-value')).toHaveText('30');
 
   await convert(page);
@@ -318,6 +332,36 @@ test('the background is replaced with the standard’s white', async ({ page }) 
   await expect(firstCard(page).locator('.card-note')).toBeHidden();
 });
 
+test('the model loads on demand and does the matting', async ({ page }) => {
+  await addImages(page, [portraitUpload('me.png', { width: 400, height: 400 })]);
+  await page.selectOption('#document-standard', 'umrah-hajj-evisa');
+
+  // Nothing about the model is fetched until it is asked for: it is 25 MB, and
+  // most people never tick the box.
+  const requests = [];
+  page.on('request', (request) => {
+    if (/vendor\//.test(request.url())) requests.push(new URL(request.url()).pathname);
+  });
+  expect(requests).toEqual([]);
+
+  await page.check('#remove-background');
+  await expect(page.locator('#status')).toContainText('Background model ready', { timeout: 120_000 });
+  expect(requests.some((path) => path.endsWith('.wasm'))).toBe(true);
+  expect(requests.some((path) => path.endsWith('.onnx'))).toBe(true);
+
+  // With the model in play the flood fill's knob stays out of sight, because
+  // it controls nothing.
+  await expect(page.locator('#tolerance-row')).toBeHidden();
+
+  await convert(page);
+  const card = firstCard(page);
+  await expect(card).toHaveAttribute('data-state', 'done');
+  expect(parseConverted(await card.locator('.converted').textContent()))
+    .toMatchObject({ width: 600, height: 600, format: 'JPEG' });
+  // The "could not be separated" warning belongs to the fallback alone.
+  await expect(card.locator('.card-note')).toBeHidden();
+});
+
 test('the background stays put when the option is off', async ({ page }) => {
   await addImages(page, [portraitUpload('me.png', { width: 400, height: 400 })]);
   await page.selectOption('#document-standard', 'umrah-hajj-evisa');
@@ -331,6 +375,7 @@ test('the background stays put when the option is off', async ({ page }) => {
 test('a background that cannot be separated is called out', async ({ page }) => {
   // A subject the same colour as the wall: the flood swallows the lot, and
   // that has to be said rather than quietly shipped.
+  await withoutModel(page);
   await addImages(page, [
     portraitUpload('washed-out.png', { width: 400, height: 400, subject: [82, 127, 207] }),
   ]);

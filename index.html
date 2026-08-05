@@ -108,18 +108,23 @@
         </div>
 
         <p class="hint">
-          Floods in from the edges of the frame and paints everything it reaches with the
-          background colour above. Built for a plain, evenly lit wall: raise the tolerance
-          if patches of wall survive, lower it if the edges of the hair start to go.
-          Clothing the same colour as the wall goes with the wall.
+          Cuts the person out with a portrait matting model and paints everything behind
+          them the background colour above. It handles a real room, not just a plain wall.
+          The model is about 25 MB and downloads the first time you tick this — on your
+          device, once, and then cached for offline use. Nothing is uploaded.
+        </p>
+        <p class="hint" id="tolerance-hint" hidden>
+          The model is unavailable, so a simpler matte floods in from the edges of the
+          frame instead. It needs a plain, evenly lit wall: raise the tolerance if patches
+          of wall survive, lower it if the edges of the hair start to go.
         </p>
       </div>
 
       <p class="advice" id="document-drift" hidden></p>
       <p class="hint" id="document-caveat" hidden>
         The app checks format, dimensions and file size only. It cannot judge
-        the background, lighting or how your face is framed — and it never
-        replaces the background of a photo, so shoot against a plain white wall.
+        the lighting or how your face is framed, and it never decides whether a
+        photo will be accepted — look at the result before you use it.
       </p>
     </section>
 
