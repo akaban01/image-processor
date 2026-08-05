@@ -406,13 +406,30 @@ test('closing the viewfinder releases the camera', async ({ page }) => {
   await page.click('#camera-close');
   await expect(page.locator('#camera')).toBeHidden();
 
-  // Every track stopped means the camera light goes out; a live track here is
-  // the difference between a tool and something people uninstall.
+  // Immediately, not eventually: `dialog.close()` fires its event in a queued
+  // task, so tearing down from that event alone leaves the camera live for as
+  // long as the queue is busy — which is exactly what a loaded machine has.
   const live = await page.evaluate(() => {
     const video = document.getElementById('camera-video');
     return (video.srcObject?.getTracks() || []).filter((track) => track.readyState === 'live').length;
   });
   expect(live).toBe(0);
+});
+
+test('dismissing the viewfinder with Escape releases the camera too', async ({ page }) => {
+  await page.selectOption('#document-standard', 'umrah-hajj-evisa');
+  await page.click('#camera-open');
+  await expect(page.locator('#camera-shoot')).toBeEnabled();
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#camera')).toBeHidden();
+
+  // This path really does run off the dialog's own event, so it is allowed to
+  // take a moment — it just is not allowed to never happen.
+  await expect.poll(() => page.evaluate(() => {
+    const video = document.getElementById('camera-video');
+    return (video.srcObject?.getTracks() || []).filter((track) => track.readyState === 'live').length;
+  })).toBe(0);
 });
 
 test('the print standard records the photo’s physical size', async ({ page }) => {

@@ -635,8 +635,13 @@ async function openCamera() {
 }
 
 function closeCamera() {
+  // Synchronously, before the dialog is even dismissed: `dialog.close()` fires
+  // its `close` event in a queued task, and "the camera light goes out when I
+  // press Close" should not be waiting behind whatever else is on the queue.
+  // The listener below still runs — `stopStream` is idempotent — because
+  // Escape and the backdrop never come through here.
+  stopStream();
   if (el.camera.open) el.camera.close();
-  // The `close` event does the tearing down, so re-entry is always clean.
 }
 
 /**
