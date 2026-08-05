@@ -21,6 +21,7 @@ js/lib/
   framing.js              head placement and the capture crop
   geometry.js             pure resize/crop maths
   intake.js               drops, folders, paste, de-duplication
+  matte.js                separating a portrait from a plain backdrop
   naming.js               filename templates and collision handling
   pipeline.js             worker pool vs. main-thread fallback
   pool.js                 the worker pool itself
@@ -71,7 +72,11 @@ only a person can judge — background, lighting, how the face is framed. **Take
 opens the device camera with a head outline drawn on the standard's own grid — crown
 ticks, an eye line, and a shaded band the chin has to land in — and captures exactly the
 rectangle you framed, so the crop holds no surprises. The capture is converted
-immediately, giving a finished photo in two clicks. Print standards
+immediately, giving a finished photo in two clicks. **Replace the background** floods in
+from the edges of the frame and repaints everything it reaches — the wall goes white while
+the person stays put. It is a matte, not a segmentation model: it works on a plain, evenly
+lit backdrop, and when the flood finds something else the card says so rather than shipping
+a mangled photo quietly. Print standards
 stamp the JPEG with its resolution, so 600 × 600 at 300 DPI prints at exactly 2 × 2 in
 rather than at whatever size the print shop guesses.
 

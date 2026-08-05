@@ -10,6 +10,7 @@ import { RESIZE_MODES, ANCHOR_NAMES, MAX_DIMENSION } from './geometry.js';
 import { DEFAULT_TEMPLATE } from './naming.js';
 import { NO_STANDARD, STANDARD_IDS, standardSettings } from './documents.js';
 import { MAX_DPI } from './dpi.js';
+import { DEFAULT_TOLERANCE } from './matte.js';
 
 export const THEMES = ['auto', 'light', 'dark'];
 
@@ -29,6 +30,9 @@ export function defaultSettings() {
     documentId: NO_STANDARD,
     // Print resolution stamped into JPEG output; 0 leaves the file unmarked.
     dpi: 0,
+    // Paint the backdrop out and replace it with `background`.
+    removeBackground: false,
+    backgroundTolerance: DEFAULT_TOLERANCE,
     rotate: 0,
     flipH: false,
     flipV: false,
@@ -88,6 +92,12 @@ export function normalizeSettings(input, base = defaultSettings()) {
       : base.template,
     documentId: oneOf(raw.documentId, STANDARD_IDS, base.documentId),
     dpi: Math.round(clamp(raw.dpi, 0, MAX_DPI, base.dpi)),
+    removeBackground: typeof raw.removeBackground === 'boolean'
+      ? raw.removeBackground
+      : base.removeBackground,
+    backgroundTolerance: Math.round(
+      clamp(raw.backgroundTolerance, 0, 100, base.backgroundTolerance),
+    ),
     rotate: oneOf(Math.round(Number(raw.rotate)) || 0, [0, 90, 180, 270], base.rotate),
     flipH: typeof raw.flipH === 'boolean' ? raw.flipH : base.flipH,
     flipV: typeof raw.flipV === 'boolean' ? raw.flipV : base.flipV,
@@ -207,6 +217,7 @@ export function isPassthrough(settings, sourceMime) {
     && !settings.flipH
     && !settings.flipV
     && !settings.targetEnabled
+    && !settings.removeBackground
   );
 }
 

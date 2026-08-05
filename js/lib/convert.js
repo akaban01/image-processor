@@ -12,6 +12,7 @@ import { renderImage, releaseCanvas } from './render.js';
 import { encodeCanvas, searchQuality, pickSmallest } from './encode.js';
 import { AUTO_MIME, formatByMime, supportedFormats } from './formats.js';
 import { stampJpegDensity } from './dpi.js';
+import { replaceBackground } from './matte.js';
 
 /** How far the size search may shrink an image before giving up. */
 const RESCALE_FACTOR = 0.8;
@@ -41,6 +42,33 @@ async function candidateFormats(mime) {
  * scaled down — reducing dimensions preserves far more perceived quality than
  * pushing a JPEG below q≈0.2, where blocking artefacts take over.
  */
+/**
+ * Paint out the backdrop on a freshly drawn canvas.
+ *
+ * This happens after the resize rather than before it: the matte then works on
+ * the pixels that are actually going to be encoded — a fraction of the source
+ * for a 40-megapixel photo — and its soft edge lands on output pixels instead
+ * of being resampled into a halo.
+ *
+ * @returns {{applied: boolean, coverage: number, plausible: boolean}}
+ */
+function matteCanvas(canvas, settings) {
+  const idle = { applied: false, coverage: 0, plausible: false };
+  if (!settings.removeBackground) return idle;
+
+  const context = canvas.getContext('2d');
+  if (!context) return idle;
+
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  const report = replaceBackground(image, {
+    background: settings.background,
+    tolerance: settings.backgroundTolerance,
+  });
+
+  if (report.applied) context.putImageData(image, 0, 0);
+  return report;
+}
+
 async function encodeFormat({ source, settings, geo, format, createCanvas, signal }) {
   const background = format.alpha ? null : settings.background;
   const renderOptions = {
@@ -60,11 +88,13 @@ async function encodeFormat({ source, settings, geo, format, createCanvas, signa
     const canvas = renderImage(source, renderOptions, createCanvas);
     try {
       assertLive(signal);
+      const matte = matteCanvas(canvas, settings);
       const blob = await encodeCanvas(canvas, format.mime, quality);
       return {
         blob,
         format,
         quality,
+        matte,
         width: geo.dw,
         height: geo.dh,
         // A lossless format under a budget is the one case worth reporting on
@@ -85,6 +115,7 @@ async function encodeFormat({ source, settings, geo, format, createCanvas, signa
     const canvas = renderImage(source, { ...renderOptions, geo: currentGeo }, createCanvas);
 
     try {
+      const matte = matteCanvas(canvas, settings);
       const result = await searchQuality({
         encode: (q) => encodeCanvas(canvas, format.mime, q),
         budget: settings.targetBytes,
@@ -96,6 +127,7 @@ async function encodeFormat({ source, settings, geo, format, createCanvas, signa
         blob: result.blob,
         format,
         quality: result.quality,
+        matte,
         width: currentGeo.dw,
         height: currentGeo.dh,
         withinBudget: result.withinBudget,
@@ -186,6 +218,9 @@ export async function convertSource(source, settings, { createCanvas, signal }) 
     sourceWidth,
     sourceHeight,
     withinBudget: chosen.withinBudget,
+    backgroundReplaced: Boolean(chosen.matte?.applied),
+    backgroundCoverage: chosen.matte?.coverage || 0,
+    backgroundPlausible: Boolean(chosen.matte?.plausible),
     rescaled: chosen.rescales > 0,
     clamped: Boolean(geo.clamped),
     triedFormats: results.length,

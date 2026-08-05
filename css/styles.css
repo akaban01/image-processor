@@ -454,6 +454,26 @@ output { font-variant-numeric: tabular-nums; font-weight: 650; }
 .doc-reqs.ok { color: var(--muted); }
 .doc-reqs.ok li::before { content: "✓"; color: var(--ok); }
 
+.doc-background {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  margin-top: 1.05rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.doc-background .hint { max-width: 68ch; }
+
+.tolerance-row {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  max-width: 24rem;
+}
+.tolerance-row label { font-size: .82rem; font-weight: 650; color: var(--muted); white-space: nowrap; }
+.tolerance-row input { flex: 1; }
+.tolerance-row output { min-width: 2.2ch; text-align: right; }
+
 /* ══ Guided camera capture ══════════════════════════════════════ */
 
 .doc-buttons { display: flex; flex-wrap: wrap; gap: .5rem; }

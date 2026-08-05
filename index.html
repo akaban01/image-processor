@@ -95,6 +95,26 @@
         </div>
       </div>
 
+      <div class="doc-background" id="background-removal" hidden>
+        <label class="checkbox">
+          <input id="remove-background" type="checkbox">
+          <span>Replace the background</span>
+        </label>
+
+        <div class="tolerance-row" id="tolerance-row" hidden>
+          <label for="background-tolerance">Edge tolerance</label>
+          <input id="background-tolerance" type="range" min="0" max="100" step="1" value="30">
+          <output id="tolerance-value" for="background-tolerance">30</output>
+        </div>
+
+        <p class="hint">
+          Floods in from the edges of the frame and paints everything it reaches with the
+          background colour above. Built for a plain, evenly lit wall: raise the tolerance
+          if patches of wall survive, lower it if the edges of the hair start to go.
+          Clothing the same colour as the wall goes with the wall.
+        </p>
+      </div>
+
       <p class="advice" id="document-drift" hidden></p>
       <p class="hint" id="document-caveat" hidden>
         The app checks format, dimensions and file size only. It cannot judge
