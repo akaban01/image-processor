@@ -443,6 +443,8 @@ function renderCheck(item) {
 let cameraStream = null;
 /** @type {{blob: Blob, url: string, crop: object}|null} */
 let cameraShot = null;
+/** Is the preview being shown back to front, the way a mirror would? */
+let cameraMirrored = false;
 
 const cameraSupported = () => Boolean(navigator.mediaDevices?.getUserMedia)
   && typeof el.camera?.showModal === 'function';
@@ -600,15 +602,48 @@ async function startStream(deviceId) {
     /* Autoplay of a muted local stream is allowed; a refusal is not fatal. */
   }
 
+  // A rear camera is pointed at the world, and the world does not need
+  // mirroring. Anything else — a phone's front camera, or a laptop webcam,
+  // which reports no facing mode at all — is pointed at the person looking.
+  const facing = cameraStream.getVideoTracks()[0]?.getSettings?.().facingMode;
+  cameraMirrored = facing !== 'environment';
+  el.cameraVideo.classList.toggle('mirrored', cameraMirrored);
+  setCameraHelp('live');
+
   el.cameraShoot.disabled = false;
   checkResolution(el.cameraVideo.videoWidth, el.cameraVideo.videoHeight);
   await listCameras();
+}
+
+/**
+ * What to say under the viewfinder.
+ *
+ * A front camera preview is mirrored, because a preview that is not is
+ * genuinely disorienting — lean right and the person on screen leans left.
+ * The file is never mirrored: a document photo has to be a true likeness, and
+ * a flipped one gets rejected. Both halves of that need saying, at the moment
+ * each one matters.
+ */
+function setCameraHelp(view) {
+  if (view === 'still') {
+    el.cameraHelp.textContent = cameraMirrored
+      ? 'This is the photo as it will be saved — not mirrored, unlike the preview. '
+        + 'Check it reads the right way round before using it.'
+      : 'This is the photo as it will be saved.';
+    return;
+  }
+
+  el.cameraHelp.textContent =
+    'Line the top of the head up with the side ticks and put the chin inside the shaded '
+    + 'band. Face the camera square on, against a plain white wall, in even light.'
+    + (cameraMirrored ? ' The preview is mirrored, like a mirror; the saved photo is not.' : '');
 }
 
 function showLiveView() {
   if (cameraShot) URL.revokeObjectURL(cameraShot.url);
   cameraShot = null;
 
+  setCameraHelp('live');
   el.cameraStill.hidden = true;
   el.cameraStill.removeAttribute('src');
   el.cameraVideo.hidden = false;
@@ -622,9 +657,6 @@ async function openCamera() {
   if (!standard || !cameraSupported()) return;
 
   el.cameraTitle.textContent = `Take a photo for ${standard.short}`;
-  el.cameraHelp.textContent =
-    'Line the top of the head up with the side ticks and put the chin inside the shaded '
-    + 'band. Face the camera square on, against a plain white wall, in even light.';
   drawGuide(standard);
   showLiveView();
   setCameraError('');
@@ -669,6 +701,9 @@ function takeShot() {
     }
 
     cameraShot = { blob, url: URL.createObjectURL(blob), crop };
+    // `drawImage` reads the track, not the CSS, so the capture is already the
+    // real way round — the still just has to be shown without the mirror.
+    setCameraHelp('still');
     el.cameraStill.src = cameraShot.url;
     el.cameraStill.hidden = false;
     el.cameraVideo.hidden = true;

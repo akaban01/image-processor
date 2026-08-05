@@ -398,6 +398,36 @@ test('the guided capture converts straight into a compliant photo', async ({ pag
   await expect(card.locator('.card-check')).toHaveAttribute('data-ok', 'true');
 });
 
+test('the preview is mirrored and the photo it takes is not', async ({ page }) => {
+  await page.selectOption('#document-standard', 'umrah-hajj-evisa');
+  await page.click('#camera-open');
+  await expect(page.locator('#camera-shoot')).toBeEnabled();
+
+  const video = page.locator('#camera-video');
+  await expect(video).toHaveClass(/mirrored/);
+  await expect(page.locator('#camera-help')).toContainText('preview is mirrored');
+
+  // Not just the class: the flip has to actually be in the computed style,
+  // since that is the whole reason leaning right no longer moves you left.
+  const previewTransform = await video.evaluate((node) => getComputedStyle(node).transform);
+  expect(previewTransform).toBe('matrix(-1, 0, 0, 1, 0, 0)');
+
+  await page.click('#camera-shoot');
+
+  // `drawImage` reads the track, not the rendered element, so the capture is
+  // the true way round — and it must be shown that way, or the mirror would
+  // be a lie the user only discovers after uploading.
+  const still = page.locator('#camera-still');
+  await expect(still).toBeVisible();
+  await expect(still).not.toHaveClass(/mirrored/);
+  expect(await still.evaluate((node) => getComputedStyle(node).transform)).toBe('none');
+  await expect(page.locator('#camera-help')).toContainText('not mirrored');
+
+  // Going back to the viewfinder restores the mirror and its explanation.
+  await page.click('#camera-retake');
+  await expect(page.locator('#camera-help')).toContainText('preview is mirrored');
+});
+
 test('closing the viewfinder releases the camera', async ({ page }) => {
   await page.selectOption('#document-standard', 'umrah-hajj-evisa');
   await page.click('#camera-open');
