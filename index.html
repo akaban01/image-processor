@@ -58,6 +58,42 @@
       <div id="presets" class="presets"></div>
     </section>
 
+    <!-- ── Document photos ───────────────────────────────────────── -->
+    <section class="panel doc-panel" aria-labelledby="document-heading">
+      <h2 id="document-heading">Visa &amp; ID photo</h2>
+
+      <div class="settings-grid">
+        <div class="field">
+          <label for="document-standard">Photo standard</label>
+          <select id="document-standard"></select>
+          <p class="hint" id="document-hint">
+            Pick a standard to size, crop and compress every photo to that
+            document's rules.
+          </p>
+          <button id="document-reapply" class="btn ghost small" type="button" hidden>
+            Re-apply the standard
+          </button>
+        </div>
+
+        <div class="field doc-list" id="document-applied-field" hidden>
+          <label id="document-applied-label">Applied automatically</label>
+          <ul class="doc-reqs ok" id="document-applied" aria-labelledby="document-applied-label"></ul>
+        </div>
+
+        <div class="field doc-list" id="document-rules-field" hidden>
+          <label id="document-rules-label">Check these yourself</label>
+          <ul class="doc-reqs" id="document-rules" aria-labelledby="document-rules-label"></ul>
+        </div>
+      </div>
+
+      <p class="advice" id="document-drift" hidden></p>
+      <p class="hint" id="document-caveat" hidden>
+        The app checks format, dimensions and file size only. It cannot judge
+        the background, lighting or how your face is framed — and it never
+        replaces the background of a photo, so shoot against a plain white wall.
+      </p>
+    </section>
+
     <!-- ── Settings ──────────────────────────────────────────────── -->
     <section class="panel" aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
@@ -286,6 +322,7 @@
         <p class="card-meta original"></p>
         <p class="card-meta converted"></p>
         <p class="card-note" hidden></p>
+        <p class="card-check" hidden></p>
         <p class="card-error" role="alert" hidden></p>
       </div>
       <div class="card-actions">

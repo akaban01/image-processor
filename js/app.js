@@ -15,12 +15,21 @@ import {
   PRESETS,
   THEMES,
   applyPreset,
+  applyStandard,
   defaultSettings,
   isPassthrough,
   loadSettings,
   normalizeSettings,
   saveSettings,
 } from './lib/settings.js';
+import {
+  COMMON_RULES,
+  NO_STANDARD,
+  PHOTO_STANDARDS,
+  checkPhoto,
+  matchesStandard,
+  standardById,
+} from './lib/documents.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -29,6 +38,15 @@ const el = {
   dropOverlay: $('drop-overlay'),
   fileInput: $('file-input'),
   presets: $('presets'),
+  documentStandard: $('document-standard'),
+  documentHint: $('document-hint'),
+  documentReapply: $('document-reapply'),
+  documentAppliedField: $('document-applied-field'),
+  documentApplied: $('document-applied'),
+  documentRulesField: $('document-rules-field'),
+  documentRules: $('document-rules'),
+  documentDrift: $('document-drift'),
+  documentCaveat: $('document-caveat'),
   format: $('format'),
   formatHint: $('format-hint'),
   quality: $('quality'),
@@ -152,6 +170,9 @@ function readSettings() {
     targetBytes: parseByteSize(el.targetSize.value),
     background: el.background.value,
     template: el.template.value,
+    documentId: el.documentStandard.value,
+    // Set by the chosen standard rather than by a control of its own.
+    dpi: settings.dpi,
     rotate: Number(document.querySelector('[data-rotate][aria-checked="true"]')?.dataset.rotate || 0),
     flipH: el.flipH.getAttribute('aria-pressed') === 'true',
     flipV: el.flipV.getAttribute('aria-pressed') === 'true',
@@ -178,6 +199,7 @@ function writeSettings(next) {
   el.targetSize.value = next.targetBytes ? formatBytes(next.targetBytes) : '500 KB';
   el.background.value = next.background;
   el.template.value = next.template;
+  el.documentStandard.value = next.documentId;
 
   for (const button of document.querySelectorAll('[data-rotate]')) {
     button.setAttribute('aria-checked', String(Number(button.dataset.rotate) === next.rotate));
@@ -229,6 +251,8 @@ function syncUI() {
     button.setAttribute('aria-pressed', String(button.dataset.active === 'true'));
   }
 
+  syncDocumentPanel();
+  for (const item of items) renderCheck(item);
   updateAdvice();
 }
 
@@ -282,12 +306,96 @@ function buildPresets() {
       button.addEventListener('click', () => {
         clearPresetHighlight();
         button.dataset.active = 'true';
-        commitSettings(applyPreset(readSettings(), preset.settings));
+        // A preset rewrites format and size, so whatever document standard was
+        // in force is no longer the one being produced.
+        commitSettings(applyStandard(applyPreset(readSettings(), preset.settings), null));
         setStatus(`Preset applied: ${preset.label}.`);
       });
       return button;
     }),
   );
+}
+
+/* ══ Document photo standards ══════════════════════════════════ */
+
+function buildStandards() {
+  el.documentStandard.replaceChildren(
+    new Option('None — my own settings', NO_STANDARD),
+    ...PHOTO_STANDARDS.map((standard) => new Option(standard.label, standard.id)),
+  );
+}
+
+function fillList(list, entries) {
+  list.replaceChildren(
+    ...entries.map((entry) => {
+      const item = document.createElement('li');
+      item.textContent = entry;
+      return item;
+    }),
+  );
+}
+
+/** Switch standards, or switch back to hand-picked settings. */
+function chooseStandard(id) {
+  const standard = standardById(id);
+  clearPresetHighlight();
+  commitSettings(applyStandard(readSettings(), standard));
+  setStatus(
+    standard
+      ? `Photo standard applied: ${standard.label}.`
+      : 'Photo standard cleared — the settings are yours again.',
+  );
+}
+
+const DEFAULT_DOC_HINT =
+  'Pick a standard to size, crop and compress every photo to that document’s rules.';
+
+function syncDocumentPanel() {
+  const standard = standardById(settings.documentId);
+
+  el.documentHint.textContent = standard ? standard.summary : DEFAULT_DOC_HINT;
+  el.documentAppliedField.hidden = !standard;
+  el.documentRulesField.hidden = !standard;
+  el.documentCaveat.hidden = !standard;
+
+  if (standard) {
+    fillList(el.documentApplied, standard.requirements);
+    fillList(el.documentRules, [...standard.rules, ...COMMON_RULES]);
+  }
+
+  // Manual edits are allowed to win — the panel says so instead of undoing them.
+  const drifted = Boolean(standard) && !matchesStandard(settings, standard);
+  el.documentDrift.hidden = !drifted;
+  el.documentDrift.textContent = drifted
+    ? 'The settings below no longer produce a photo that meets this standard.'
+    : '';
+  el.documentReapply.hidden = !drifted;
+}
+
+/** Annotate one result with how it measures up to the chosen standard. */
+function renderCheck(item) {
+  const checkEl = item.node?.querySelector('.card-check');
+  if (!checkEl) return;
+
+  const standard = standardById(settings.documentId);
+  if (!standard || !item.result) {
+    checkEl.hidden = true;
+    checkEl.textContent = '';
+    return;
+  }
+
+  const check = checkPhoto(standard, {
+    mime: item.result.mime,
+    width: item.result.width,
+    height: item.result.height,
+    bytes: item.result.blob.size,
+  });
+
+  checkEl.hidden = false;
+  checkEl.dataset.ok = String(check.ok);
+  checkEl.textContent = check.ok
+    ? `Fits the ${standard.short} spec — now check the photo itself against the list above.`
+    : `Does not meet the ${standard.short} spec: ${check.issues.join(' ')}`;
 }
 
 /* ══ Items ═════════════════════════════════════════════════════ */
@@ -334,6 +442,12 @@ function updateSavings() {
   el.savings.hidden = false;
   el.savings.style.color = delta.direction === 'up' ? 'var(--danger)' : 'var(--ok)';
   el.savings.textContent = `${formatBytes(before)} → ${formatBytes(after)} (${delta.label})`;
+}
+
+/** Physical size of a stamped result, in millimetres. */
+function printSize(result) {
+  const mm = (pixels) => Math.round((pixels / result.dpi) * 25.4);
+  return `${mm(result.width)} × ${mm(result.height)} mm`;
 }
 
 function setItemState(item, state) {
@@ -395,6 +509,7 @@ function updateItem(item) {
     noteEl.hidden = true;
     link.hidden = true;
     converted.textContent = '';
+    renderCheck(item);
     return;
   }
 
@@ -410,11 +525,15 @@ function updateItem(item) {
     `${result.sourceWidth} × ${result.sourceHeight} · ${formatBytes(item.file.size)}`;
 
   const delta = sizeDelta(item.file.size, result.blob.size);
-  converted.replaceChildren(
-    document.createTextNode(
-      `${result.width} × ${result.height} · ${result.formatLabel} · ${formatBytes(result.blob.size)}`,
-    ),
-  );
+  const line = [
+    `${result.width} × ${result.height}`,
+    result.formatLabel,
+    formatBytes(result.blob.size),
+  ];
+  // A stamped density is the only thing that gives the pixels a physical size,
+  // so it belongs next to them rather than in a footnote.
+  if (result.dpi) line.push(`${printSize(result)} @ ${result.dpi} DPI`);
+  converted.replaceChildren(document.createTextNode(line.join(' · ')));
   const badge = document.createElement('span');
   badge.className = `delta ${delta.direction}`;
   badge.textContent = delta.label;
@@ -426,6 +545,8 @@ function updateItem(item) {
   if (result.clamped) notes.push('Reduced to stay within this browser’s canvas limit.');
   noteEl.hidden = !notes.length;
   noteEl.textContent = notes.join(' ');
+
+  renderCheck(item);
 
   link.hidden = false;
   link.href = result.url;
@@ -717,6 +838,9 @@ function bindSettings() {
     });
   }
 
+  el.documentStandard.addEventListener('change', () => chooseStandard(el.documentStandard.value));
+  el.documentReapply.addEventListener('click', () => chooseStandard(settings.documentId));
+
   // Reformat the typed budget once the user is done with the field.
   el.targetSize.addEventListener('change', () => {
     const bytes = parseByteSize(el.targetSize.value);
@@ -839,6 +963,7 @@ function setupInstall() {
 
   settings = loadSettings();
   buildPresets();
+  buildStandards();
 
   pipeline = createPipeline();
   el.engine.textContent = pipeline.mode === 'worker'

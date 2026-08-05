@@ -429,6 +429,31 @@ output { font-variant-numeric: tabular-nums; font-weight: 650; }
 .preset strong { font-size: .88rem; font-weight: 650; }
 .preset span { font-size: .74rem; color: var(--muted); }
 
+/* ══ Document photo standards ═══════════════════════════════════ */
+
+.doc-panel .settings-grid { align-items: start; }
+.doc-panel #document-reapply { align-self: flex-start; }
+.doc-panel .advice { margin-top: .9rem; }
+.doc-panel > .hint { margin-top: .55rem; }
+
+.doc-list > label { font-size: .82rem; font-weight: 650; color: var(--muted); }
+
+.doc-reqs {
+  display: flex;
+  flex-direction: column;
+  gap: .28rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: .78rem;
+  line-height: 1.45;
+  color: var(--faint);
+}
+.doc-reqs li { padding-left: 1.05rem; text-indent: -1.05rem; }
+.doc-reqs li::before { content: "•"; margin-right: .55rem; color: var(--border-strong); }
+.doc-reqs.ok { color: var(--muted); }
+.doc-reqs.ok li::before { content: "✓"; color: var(--ok); }
+
 /* ══ Buttons ════════════════════════════════════════════════════ */
 
 .btn {
@@ -596,6 +621,18 @@ output { font-variant-numeric: tabular-nums; font-weight: 650; }
 .card-meta.converted { color: var(--text); }
 .card-note { font-size: .76rem; color: var(--warn); }
 .card-error { font-size: .8rem; color: var(--danger); }
+
+.card-check {
+  margin-top: .2rem;
+  font-size: .76rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.card-check::before { margin-right: .3em; }
+.card-check[data-ok="true"] { color: var(--ok); }
+.card-check[data-ok="true"]::before { content: "✓"; }
+.card-check[data-ok="false"] { color: var(--danger); }
+.card-check[data-ok="false"]::before { content: "✕"; }
 
 .delta {
   display: inline-block;
