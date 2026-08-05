@@ -193,6 +193,53 @@ test('applies a preset', async ({ page }) => {
   expect(converted).toMatchObject({ width: 400, height: 400 });
 });
 
+test('the Umrah / Hajj eVisa standard produces a photo that meets the spec', async ({ page }) => {
+  await addImages(page, [pngUpload('pilgrim.png', { width: 900, height: 1200 })]);
+
+  await page.selectOption('#document-standard', 'umrah-hajj-evisa');
+  await expect(page.locator('#format')).toHaveValue('image/jpeg');
+  await expect(page.locator('#resize-mode')).toHaveValue('cover');
+  await expect(page.locator('#target-size')).toHaveValue('200 KB');
+  await expect(page.locator('#document-applied')).toContainText('600 × 600');
+
+  await convert(page);
+
+  const card = firstCard(page);
+  await expect(card).toHaveAttribute('data-state', 'done');
+  expect(parseConverted(await card.locator('.converted').textContent()))
+    .toMatchObject({ width: 600, height: 600, format: 'JPEG' });
+  await expect(card.locator('.card-check')).toHaveAttribute('data-ok', 'true');
+  await expect(card.locator('.download')).toHaveAttribute('download', 'pilgrim.jpg');
+});
+
+test('a standard survives a reload, and settings that drift from it are flagged', async ({ page }) => {
+  await page.selectOption('#document-standard', 'umrah-hajj-evisa');
+  await expect(page.locator('#document-drift')).toBeHidden();
+
+  await page.reload();
+  await page.waitForSelector('html[data-ready="true"]');
+  await expect(page.locator('#document-standard')).toHaveValue('umrah-hajj-evisa');
+
+  await page.fill('#target-width', '400');
+  await expect(page.locator('#document-drift')).toBeVisible();
+
+  await page.click('#document-reapply');
+  await expect(page.locator('#target-width')).toHaveValue('600');
+  await expect(page.locator('#document-drift')).toBeHidden();
+});
+
+test('the print standard records the photo’s physical size', async ({ page }) => {
+  await addImages(page, [pngUpload('print.png', { width: 500, height: 500 })]);
+
+  await page.selectOption('#document-standard', 'umrah-hajj-print');
+  await convert(page);
+
+  const card = firstCard(page);
+  await expect(card).toHaveAttribute('data-state', 'done');
+  await expect(card.locator('.converted')).toContainText('51 × 51 mm @ 300 DPI');
+  await expect(card.locator('.card-check')).toHaveAttribute('data-ok', 'true');
+});
+
 test('converts a batch and keeps output names unique', async ({ page }) => {
   await addImages(page, [
     pngUpload('shot.png', { width: 200, height: 200 }),

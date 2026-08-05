@@ -8,6 +8,8 @@
 
 import { RESIZE_MODES, ANCHOR_NAMES, MAX_DIMENSION } from './geometry.js';
 import { DEFAULT_TEMPLATE } from './naming.js';
+import { NO_STANDARD, STANDARD_IDS, standardSettings } from './documents.js';
+import { MAX_DPI } from './dpi.js';
 
 export const THEMES = ['auto', 'light', 'dark'];
 
@@ -23,6 +25,10 @@ export function defaultSettings() {
     targetBytes: 0,
     background: '#ffffff',
     template: DEFAULT_TEMPLATE,
+    // Which document-photo standard the output is being held to, if any.
+    documentId: NO_STANDARD,
+    // Print resolution stamped into JPEG output; 0 leaves the file unmarked.
+    dpi: 0,
     rotate: 0,
     flipH: false,
     flipV: false,
@@ -80,6 +86,8 @@ export function normalizeSettings(input, base = defaultSettings()) {
     template: typeof raw.template === 'string' && raw.template.trim()
       ? raw.template.trim()
       : base.template,
+    documentId: oneOf(raw.documentId, STANDARD_IDS, base.documentId),
+    dpi: Math.round(clamp(raw.dpi, 0, MAX_DPI, base.dpi)),
     rotate: oneOf(Math.round(Number(raw.rotate)) || 0, [0, 90, 180, 270], base.rotate),
     flipH: typeof raw.flipH === 'boolean' ? raw.flipH : base.flipH,
     flipV: typeof raw.flipV === 'boolean' ? raw.flipV : base.flipV,
@@ -174,6 +182,17 @@ export function applyPreset(current, patch) {
     },
     current,
   );
+}
+
+/**
+ * Switch to (or away from) a document-photo standard.
+ *
+ * @param {object} current
+ * @param {import('./documents.js').PhotoStandard|null} standard
+ * @returns {object} a normalized settings object
+ */
+export function applyStandard(current, standard) {
+  return applyPreset(current, standardSettings(standard));
 }
 
 /**

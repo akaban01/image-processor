@@ -69,6 +69,19 @@ test('normalizeSettings rejects unknown enum values', () => {
   assert.equal(settings.rotate, 0);
 });
 
+test('normalizeSettings only accepts a known photo standard', () => {
+  assert.equal(normalizeSettings({ documentId: 'umrah-hajj-evisa' }).documentId, 'umrah-hajj-evisa');
+  assert.equal(normalizeSettings({ documentId: 'made-up' }).documentId, 'none');
+  assert.equal(normalizeSettings({}).documentId, 'none');
+});
+
+test('normalizeSettings clamps the print resolution', () => {
+  assert.equal(normalizeSettings({ dpi: 300 }).dpi, 300);
+  assert.equal(normalizeSettings({ dpi: 1e6 }).dpi, 2400);
+  assert.equal(normalizeSettings({ dpi: -300 }).dpi, 0);
+  assert.equal(normalizeSettings({ dpi: 'print it big' }).dpi, 0);
+});
+
 test('normalizeSettings accepts a valid rotation', () => {
   assert.equal(normalizeSettings({ rotate: 270 }).rotate, 270);
   assert.equal(normalizeSettings({ rotate: '90' }).rotate, 90);

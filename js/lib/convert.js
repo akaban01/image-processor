@@ -11,6 +11,7 @@ import { computeGeometry, orientedSize, scaleGeometry } from './geometry.js';
 import { renderImage, releaseCanvas } from './render.js';
 import { encodeCanvas, searchQuality, pickSmallest } from './encode.js';
 import { AUTO_MIME, formatByMime, supportedFormats } from './formats.js';
+import { stampJpegDensity } from './dpi.js';
 
 /** How far the size search may shrink an image before giving up. */
 const RESCALE_FACTOR = 0.8;
@@ -115,6 +116,25 @@ async function encodeFormat({ source, settings, geo, format, createCanvas, signa
 }
 
 /**
+ * Mark a JPEG with its intended print resolution.
+ *
+ * Only JPEG carries the field, and only the winning blob is stamped — the
+ * rewrite is byte-for-byte, so a file that just squeezed under a size budget
+ * stays under it. Failure here is never worth losing a conversion over.
+ */
+async function stampDensity(blob, mime, dpi) {
+  if (!dpi || mime !== 'image/jpeg') return { blob, dpi: 0 };
+
+  try {
+    const stamped = stampJpegDensity(await blob.arrayBuffer(), dpi);
+    if (!stamped) return { blob, dpi: 0 };
+    return { blob: new Blob([stamped], { type: mime }), dpi };
+  } catch {
+    return { blob, dpi: 0 };
+  }
+}
+
+/**
  * Convert a decoded image.
  *
  * @param {CanvasImageSource & {width: number, height: number}} source
@@ -152,9 +172,11 @@ export async function convertSource(source, settings, { createCanvas, signal }) 
   // Prefer a result that met the budget; among equals, the smallest file.
   const withinBudget = results.filter((result) => result.withinBudget);
   const chosen = pickSmallest(withinBudget.length ? withinBudget : results);
+  const printed = await stampDensity(chosen.blob, chosen.format.mime, settings.dpi);
 
   return {
-    blob: chosen.blob,
+    blob: printed.blob,
+    dpi: printed.dpi,
     mime: chosen.format.mime,
     formatLabel: chosen.format.label,
     extension: chosen.format.ext,
