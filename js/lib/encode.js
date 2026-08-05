@@ -36,6 +36,17 @@ const QUALITY_PRECISION = 100;
 const quantize = (q) => Math.round(q * QUALITY_PRECISION) / QUALITY_PRECISION;
 
 /**
+ * How far the search will degrade an image before it gives up on quality and
+ * lets the caller shrink the dimensions instead. Below roughly this figure a
+ * JPEG is all blocking artefacts, and a smaller sharp image beats a
+ * full-size smeared one.
+ *
+ * Exported because the UI quotes it: a "quality ceiling" that silently stops
+ * mattering at 0.20 needs to say so.
+ */
+export const MIN_SEARCH_QUALITY = 0.2;
+
+/**
  * Find the highest quality whose encoded size fits a byte budget.
  *
  * The search is deliberately encoder-agnostic — `encode` is injected — because
@@ -51,7 +62,14 @@ const quantize = (q) => Math.round(q * QUALITY_PRECISION) / QUALITY_PRECISION;
  * @param {AbortSignal} [options.signal]
  * @returns {Promise<{blob: Blob, quality: number, attempts: number, withinBudget: boolean}>}
  */
-export async function searchQuality({ encode, budget, min = 0.2, max = 0.95, steps = 6, signal }) {
+export async function searchQuality({
+  encode,
+  budget,
+  min = MIN_SEARCH_QUALITY,
+  max = 0.95,
+  steps = 6,
+  signal,
+}) {
   let attempts = 0;
   const seen = new Map();
 
