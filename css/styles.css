@@ -454,6 +454,96 @@ output { font-variant-numeric: tabular-nums; font-weight: 650; }
 .doc-reqs.ok { color: var(--muted); }
 .doc-reqs.ok li::before { content: "✓"; color: var(--ok); }
 
+/* ══ Guided camera capture ══════════════════════════════════════ */
+
+.doc-buttons { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+.camera {
+  width: min(560px, 94vw);
+  padding: 1rem 1.15rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.camera::backdrop { background: rgb(0 0 0 / .62); backdrop-filter: blur(2px); }
+
+.camera-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: .5rem;
+}
+.camera-head h2 { font-size: .95rem; }
+.camera > .hint { margin-bottom: .8rem; }
+
+.camera-stage {
+  position: relative;
+  aspect-ratio: var(--shot-aspect, 1);
+  max-height: 58vh;
+  margin-inline: auto;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: #1b1d23;
+}
+.camera-stage video,
+.camera-stage img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-guide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.camera-guide .guide-head {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 3;
+  stroke-dasharray: 14 10;
+  opacity: .9;
+}
+.camera-guide .guide-band { fill: rgb(255 255 255 / .14); }
+.camera-guide .guide-edge {
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-dasharray: 8 8;
+  opacity: .8;
+}
+.camera-guide .guide-tick { stroke: var(--accent); stroke-width: 5; }
+.camera-guide .guide-eyes {
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-dasharray: 2 10;
+  opacity: .75;
+}
+.camera-guide .guide-label {
+  fill: #fff;
+  opacity: .85;
+  font-family: inherit;
+  font-weight: 650;
+  letter-spacing: .04em;
+}
+
+.camera-error { margin-top: .7rem; font-size: .82rem; color: var(--danger); }
+.camera-note { margin-top: .7rem; font-size: .78rem; color: var(--warn); }
+
+.camera-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .55rem;
+  margin-top: .9rem;
+}
+.camera-device { flex: 1 1 12rem; min-width: 0; }
+
 /* ══ Buttons ════════════════════════════════════════════════════ */
 
 .btn {

@@ -74,9 +74,14 @@
             Pick a standard to size, crop and compress every photo to that
             document's rules.
           </p>
-          <button id="document-reapply" class="btn ghost small" type="button" hidden>
-            Re-apply the standard
-          </button>
+          <div class="doc-buttons">
+            <button id="camera-open" class="btn small" type="button" hidden>
+              Take a photo
+            </button>
+            <button id="document-reapply" class="btn ghost small" type="button" hidden>
+              Re-apply the standard
+            </button>
+          </div>
         </div>
 
         <div class="field doc-list" id="document-applied-field" hidden>
@@ -313,6 +318,35 @@
     <div class="compare-meta">
       <span id="compare-before-meta"></span>
       <span id="compare-after-meta"></span>
+    </div>
+  </dialog>
+
+  <!-- ── Guided camera capture ───────────────────────────────────── -->
+  <dialog id="camera" class="camera" aria-labelledby="camera-title">
+    <div class="camera-head">
+      <h2 id="camera-title">Take a photo</h2>
+      <button id="camera-close" class="btn ghost small" type="button">Close</button>
+    </div>
+
+    <p class="hint" id="camera-help"></p>
+
+    <div class="camera-stage" id="camera-stage">
+      <video id="camera-video" playsinline autoplay muted></video>
+      <img id="camera-still" alt="The photo just taken" hidden>
+      <svg id="camera-guide" class="camera-guide" aria-hidden="true"></svg>
+    </div>
+
+    <p id="camera-error" class="camera-error" role="alert" hidden></p>
+    <p id="camera-note" class="camera-note" role="status" aria-live="polite" hidden></p>
+
+    <div class="camera-actions">
+      <div class="camera-device" id="camera-device-field" hidden>
+        <label class="visually-hidden" for="camera-device">Camera</label>
+        <select id="camera-device"></select>
+      </div>
+      <button id="camera-shoot" class="btn primary" type="button" disabled>Take photo</button>
+      <button id="camera-retake" class="btn" type="button" hidden>Retake</button>
+      <button id="camera-use" class="btn primary" type="button" hidden>Use this photo</button>
     </div>
   </dialog>
 
