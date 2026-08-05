@@ -257,6 +257,26 @@ export function paintBackground(image, mask, colour) {
 }
 
 /**
+ * A greyscale foreground mask → the per-pixel background weights that
+ * {@link paintBackground} paints with.
+ *
+ * The model says how much of each pixel is *person*; the painter asks how much
+ * is *wall*. One subtraction, but in its own function because getting it
+ * backwards produces a photo of a wall with a person-shaped hole in it — the
+ * sort of mistake a test should be able to state plainly.
+ *
+ * @param {{data: Uint8ClampedArray, width: number, height: number}} mask
+ * @returns {Uint8Array}
+ */
+export function backgroundWeights(mask) {
+  const out = new Uint8Array(mask.width * mask.height);
+  for (let index = 0; index < out.length; index++) {
+    out[index] = 255 - mask.data[index * 4];
+  }
+  return out;
+}
+
+/**
  * Feather radius for an image of this size: subtle, never zero, and capped.
  * The blur is O(pixels × radius), so the ceiling is what keeps a very large
  * image from turning a soft edge into a long wait.

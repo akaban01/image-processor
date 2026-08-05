@@ -1,9 +1,15 @@
 /**
  * Service worker: makes the converter work offline.
  *
- * The app is a few dozen kilobytes of static files with no API calls, so the
- * whole thing is precached on install and served from the network with the
- * cache as the fallback. Offline still works; online always gets the deploy
+ * The app itself is a few dozen kilobytes of static files with no API calls, so
+ * all of it is precached on install and served from the network with the cache
+ * as the fallback.
+ *
+ * `vendor/` is deliberately not in that list. The matting runtime and its
+ * weights are about 25 MB, and precaching them would make every visitor pay for
+ * a feature most never use. They are fetched the first time someone ticks
+ * "Replace the background", and the same network-first handler caches them on
+ * the way past — so the second time works offline like everything else. Offline still works; online always gets the deploy
  * that is actually live.
  *
  * It used to be stale-while-revalidate, which is faster but hands back one
@@ -15,7 +21,7 @@
  * Bump CACHE when the file list changes — the old cache is deleted on activate.
  */
 
-const CACHE = 'image-converter-v7';
+const CACHE = 'image-converter-v8';
 
 const PRECACHE = [
   './',
@@ -25,6 +31,7 @@ const PRECACHE = [
   'css/styles.css',
   'js/app.js',
   'js/worker.js',
+  'js/segment-worker.js',
   'js/lib/batch.js',
   'js/lib/bytes.js',
   'js/lib/convert.js',
@@ -36,6 +43,8 @@ const PRECACHE = [
   'js/lib/geometry.js',
   'js/lib/intake.js',
   'js/lib/matte.js',
+  'js/lib/segmenter.js',
+  'js/lib/tensor.js',
   'js/lib/naming.js',
   'js/lib/pipeline.js',
   'js/lib/pool.js',

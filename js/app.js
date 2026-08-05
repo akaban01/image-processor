@@ -32,6 +32,9 @@ import {
   standardById,
 } from './lib/documents.js';
 import { centeredCrop, cropCoversStandard, guideGeometry } from './lib/framing.js';
+import { backgroundWeights, paintBackground, parseHexColour } from './lib/matte.js';
+import { createSegmenter } from './lib/segmenter.js';
+import { maskCoverage } from './lib/tensor.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -54,6 +57,7 @@ const el = {
   toleranceRow: $('tolerance-row'),
   backgroundTolerance: $('background-tolerance'),
   toleranceValue: $('tolerance-value'),
+  toleranceHint: $('tolerance-hint'),
   cameraOpen: $('camera-open'),
   camera: $('camera'),
   cameraTitle: $('camera-title'),
@@ -144,6 +148,9 @@ let pipeline = null;
 let runController = null;
 let busy = false;
 let installPrompt = null;
+let segmenter = null;
+/** null until the model has been tried: true it works, false use the flood fill. */
+let modelUsable = null;
 
 /* ══ Status & progress ══════════════════════════════════════════ */
 
@@ -391,7 +398,11 @@ function syncDocumentPanel() {
   el.documentCaveat.hidden = !standard;
   el.cameraOpen.hidden = !standard || !cameraSupported();
   el.backgroundRemoval.hidden = !standard;
-  el.toleranceRow.hidden = !settings.removeBackground;
+  // Tolerance is the flood fill's only knob, and the flood fill only runs when
+  // the model cannot. Showing the slider before then would be offering a
+  // control over something that is not happening.
+  el.toleranceRow.hidden = !settings.removeBackground || modelUsable !== false;
+  el.toleranceHint.hidden = el.toleranceRow.hidden;
   el.toleranceValue.textContent = String(settings.backgroundTolerance);
 
   // Dropping the standard while the viewfinder is open would leave a guide on
@@ -904,7 +915,7 @@ function updateItem(item) {
   }
   if (result.rescaled) notes.push('Scaled down further to fit the size budget.');
   if (result.clamped) notes.push('Reduced to stay within this browser’s canvas limit.');
-  if (result.backgroundReplaced && !result.backgroundPlausible) {
+  if (result.backgroundMethod === 'flood' && !result.backgroundPlausible) {
     // Either almost nothing was flooded or almost everything was: both mean
     // the picture was not a subject in front of a plain wall.
     notes.push(
@@ -946,6 +957,10 @@ function addFiles(files) {
       state: 'pending',
       result: null,
       error: null,
+      // Filled in only when the background is being replaced: the model's
+      // mask, and the matted bitmap handed to the pipeline for one run.
+      mask: null,
+      bitmap: null,
     };
     items.push(item);
     renderItem(item);
@@ -966,6 +981,8 @@ function addFiles(files) {
 }
 
 function releaseItem(item) {
+  item.mask = null;
+  item.bitmap = null;
   URL.revokeObjectURL(item.previewUrl);
   if (item.result) URL.revokeObjectURL(item.result.url);
   seenFiles.delete(`${item.file.name} ${item.file.size} ${item.file.lastModified || 0}`);
@@ -993,6 +1010,136 @@ function clearAll() {
   refreshControls();
 }
 
+/* ══ Background matting ════════════════════════════════════════ */
+
+const MODEL_SIZE = '25 MB';
+
+function ensureSegmenter() {
+  if (!segmenter) segmenter = createSegmenter();
+  return segmenter;
+}
+
+/** Start the download when the box is ticked, rather than at Convert. */
+async function warmSegmenter() {
+  const client = ensureSegmenter();
+  if (!client.supported) {
+    modelUsable = false;
+    syncUI();
+    return;
+  }
+
+  setStatus(`Loading the background model — ${MODEL_SIZE}, once.`);
+  try {
+    await client.warmup();
+    modelUsable = true;
+    setStatus('Background model ready.');
+  } catch {
+    modelUsable = false;
+    setStatus('The background model could not be loaded; using the simple matte.', 'warn');
+  }
+  syncUI();
+}
+
+/**
+ * Replace one item's background, returning a bitmap for the pipeline to
+ * convert in place of the file.
+ *
+ * The matte is applied here, at full source resolution, rather than inside the
+ * conversion: the model sees the whole photo instead of a 600 px crop of it,
+ * and the mask it produces is reusable — pressing Convert again re-composites
+ * from the cached mask instead of paying for inference twice.
+ */
+async function matteItem(item) {
+  const colour = parseHexColour(settings.background);
+  if (!colour) return null;
+
+  const source = await createImageBitmap(item.file, { imageOrientation: 'from-image' });
+
+  try {
+    if (!item.mask) {
+      // The model consumes its input, so it gets the copy.
+      item.mask = await ensureSegmenter().segment(await createImageBitmap(source));
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(source, 0, 0);
+    const image = context.getImageData(0, 0, canvas.width, canvas.height);
+
+    paintBackground(image, backgroundWeights(scaleMask(item.mask, canvas.width, canvas.height)), colour);
+    context.putImageData(image, 0, 0);
+
+    return await createImageBitmap(canvas);
+  } finally {
+    source.close?.();
+  }
+}
+
+/** Stretch the model's small square mask over the photo it came from. */
+function scaleMask(mask, width, height) {
+  const small = document.createElement('canvas');
+  small.width = mask.width;
+  small.height = mask.height;
+  small.getContext('2d').putImageData(new ImageData(mask.data, mask.width, mask.height), 0, 0);
+
+  const full = document.createElement('canvas');
+  full.width = width;
+  full.height = height;
+  const context = full.getContext('2d', { willReadFrequently: true });
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(small, 0, 0, width, height);
+
+  return context.getImageData(0, 0, width, height);
+}
+
+/**
+ * Matte every item before the batch runs.
+ *
+ * A failure here is never fatal: the item simply arrives at the pipeline
+ * without a bitmap, and the flood fill takes over for that one image.
+ *
+ * @returns {Promise<{attempted: number, failed: number, poor: number}>}
+ */
+async function matteAll(signal) {
+  const summary = { attempted: 0, failed: 0, poor: 0 };
+  if (!settings.removeBackground || modelUsable === false) return summary;
+  if (!ensureSegmenter().supported) {
+    modelUsable = false;
+    return summary;
+  }
+
+  for (const item of items) {
+    if (signal?.aborted) break;
+    summary.attempted++;
+    setStatus(`Separating the subject — ${summary.attempted} of ${items.length}…`);
+
+    try {
+      item.bitmap = await matteItem(item);
+      modelUsable = true;
+      const coverage = maskCoverage(item.mask);
+      // The same sanity check the flood fill applies: a mask that keeps almost
+      // nothing found no one to keep.
+      if (coverage < 0.05 || coverage > 0.98) summary.poor++;
+    } catch {
+      item.bitmap = null;
+      item.mask = null;
+      summary.failed++;
+    }
+  }
+
+  // One failure is this photo's problem; every failure is the model's.
+  if (summary.failed === summary.attempted && summary.attempted > 0) modelUsable = false;
+  return summary;
+}
+
+/** Bitmaps are transferred to the worker, so nothing survives a run. */
+function releaseBitmaps() {
+  for (const item of items) item.bitmap = null;
+}
+
 /* ══ Conversion ════════════════════════════════════════════════ */
 
 async function convertAll() {
@@ -1010,6 +1157,16 @@ async function convertAll() {
     item.error = null;
     setItemState(item, 'pending');
     item.node.querySelector('.card-error').hidden = true;
+  }
+
+  const matte = await matteAll(runController.signal);
+  if (matte.failed) {
+    setStatus(
+      matte.failed === matte.attempted
+        ? 'The background model could not run; using the simple matte instead.'
+        : `The background model could not run on ${plural(matte.failed, 'image')}.`,
+      'warn',
+    );
   }
 
   const summary = await runBatch({
@@ -1034,6 +1191,7 @@ async function convertAll() {
     },
   });
 
+  releaseBitmaps();
   busy = false;
   runController = null;
   refreshControls();
@@ -1207,6 +1365,10 @@ function bindSettings() {
       commitSettings();
     });
   }
+
+  el.removeBackground.addEventListener('change', () => {
+    if (el.removeBackground.checked && modelUsable === null) warmSegmenter();
+  });
 
   el.documentStandard.addEventListener('change', () => chooseStandard(el.documentStandard.value));
   el.documentReapply.addEventListener('click', () => chooseStandard(settings.documentId));

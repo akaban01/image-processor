@@ -52,9 +52,13 @@ async function candidateFormats(mime) {
  *
  * @returns {{applied: boolean, coverage: number, plausible: boolean}}
  */
-function matteCanvas(canvas, settings) {
-  const idle = { applied: false, coverage: 0, plausible: false };
+function matteCanvas(canvas, settings, matted) {
+  const idle = { applied: false, coverage: 0, plausible: false, method: null };
   if (!settings.removeBackground) return idle;
+
+  // The model already did it, upstream and at source resolution, where it has
+  // the most pixels to work with. Nothing left to do here.
+  if (matted) return { applied: true, coverage: 0, plausible: true, method: 'model' };
 
   const context = canvas.getContext('2d');
   if (!context) return idle;
@@ -66,10 +70,10 @@ function matteCanvas(canvas, settings) {
   });
 
   if (report.applied) context.putImageData(image, 0, 0);
-  return report;
+  return { ...report, method: report.applied ? 'flood' : null };
 }
 
-async function encodeFormat({ source, settings, geo, format, createCanvas, signal }) {
+async function encodeFormat({ source, settings, geo, format, createCanvas, signal, matted }) {
   const background = format.alpha ? null : settings.background;
   const renderOptions = {
     geo,
@@ -88,7 +92,7 @@ async function encodeFormat({ source, settings, geo, format, createCanvas, signa
     const canvas = renderImage(source, renderOptions, createCanvas);
     try {
       assertLive(signal);
-      const matte = matteCanvas(canvas, settings);
+      const matte = matteCanvas(canvas, settings, matted);
       const blob = await encodeCanvas(canvas, format.mime, quality);
       return {
         blob,
@@ -115,7 +119,7 @@ async function encodeFormat({ source, settings, geo, format, createCanvas, signa
     const canvas = renderImage(source, { ...renderOptions, geo: currentGeo }, createCanvas);
 
     try {
-      const matte = matteCanvas(canvas, settings);
+      const matte = matteCanvas(canvas, settings, matted);
       const result = await searchQuality({
         encode: (q) => encodeCanvas(canvas, format.mime, q),
         budget: settings.targetBytes,
@@ -176,7 +180,7 @@ async function stampDensity(blob, mime, dpi) {
  * @param {AbortSignal} [deps.signal]
  * @returns {Promise<object>} blob plus everything the UI needs to describe it
  */
-export async function convertSource(source, settings, { createCanvas, signal }) {
+export async function convertSource(source, settings, { createCanvas, signal, matted = false }) {
   assertLive(signal);
 
   const sourceWidth = source.width;
@@ -190,7 +194,9 @@ export async function convertSource(source, settings, { createCanvas, signal }) 
   const results = [];
   for (const format of formats) {
     try {
-      const result = await encodeFormat({ source, settings, geo, format, createCanvas, signal });
+      const result = await encodeFormat({
+        source, settings, geo, format, createCanvas, signal, matted,
+      });
       if (result) results.push(result);
     } catch (error) {
       if (error?.name === 'AbortError') throw error;
@@ -219,6 +225,7 @@ export async function convertSource(source, settings, { createCanvas, signal }) 
     sourceHeight,
     withinBudget: chosen.withinBudget,
     backgroundReplaced: Boolean(chosen.matte?.applied),
+    backgroundMethod: chosen.matte?.method || null,
     backgroundCoverage: chosen.matte?.coverage || 0,
     backgroundPlausible: Boolean(chosen.matte?.plausible),
     rescaled: chosen.rescales > 0,

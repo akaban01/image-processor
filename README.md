@@ -8,8 +8,10 @@ never leave the device.
 index.html                markup and the settings form
 css/styles.css            styling, light/dark themes
 sw.js                     service worker (offline support)
+vendor/                   ONNX Runtime Web and the MODNet weights (see its README)
 js/app.js                 the only file that touches the DOM
 js/worker.js              conversion worker (OffscreenCanvas)
+js/segment-worker.js      portrait matting worker (ONNX Runtime + MODNet)
 js/lib/
   batch.js                runs a set of images with bounded concurrency
   bytes.js                size formatting and parsing
@@ -21,7 +23,9 @@ js/lib/
   framing.js              head placement and the capture crop
   geometry.js             pure resize/crop maths
   intake.js               drops, folders, paste, de-duplication
-  matte.js                separating a portrait from a plain backdrop
+  matte.js                the fallback matte, and painting the backdrop out
+  segmenter.js            main-thread client for the matting worker
+  tensor.js               pixels ⇄ model tensors
   naming.js               filename templates and collision handling
   pipeline.js             worker pool vs. main-thread fallback
   pool.js                 the worker pool itself
@@ -74,13 +78,16 @@ ticks, an eye line, and a shaded band the chin has to land in — and captures e
 rectangle you framed, so the crop holds no surprises. The preview is mirrored, the way a
 mirror is, so leaning right moves you right; the file never is, because a document photo
 has to be a true likeness. The capture is converted
-immediately, giving a finished photo in two clicks. **Replace the background** floods in
-from the edges of the frame and repaints everything it reaches — the wall goes white while
-the person stays put. It is a matte, not a segmentation model: it works on a plain, evenly
-lit backdrop, and when the flood finds something else the card says so rather than shipping
-a mangled photo quietly. Print standards
-stamp the JPEG with its resolution, so 600 × 600 at 300 DPI prints at exactly 2 × 2 in
-rather than at whatever size the print shop guesses.
+immediately, giving a finished photo in two clicks. **Replace the background** cuts the
+person out with [MODNet][modnet], a portrait matting model, and paints everything behind
+them white — a real room, not just a plain wall. The model runs on your device: about
+25 MB is fetched from this site the first time you tick the box, then cached for offline
+use. Where it cannot run — no network on a first visit, or a browser without WebAssembly —
+a flood-fill matte takes over, which needs a plain backdrop and says so when it fails.
+Print standards stamp the JPEG with its resolution, so 600 × 600 at 300 DPI prints at
+exactly 2 × 2 in rather than at whatever size the print shop guesses.
+
+[modnet]: https://github.com/ZHKKKe/MODNet
 
 Settings and theme persist in `localStorage`, the UI follows the system theme unless told
 otherwise, and the whole app works offline once visited.
@@ -179,8 +186,10 @@ not appear and files can still be added the usual ways.
 
 ## Privacy
 
-There is no server, no analytics, no network request of any kind after the page loads.
-Conversions run on the CPU in the tab. The camera stream is drawn straight to a canvas in
+There is no server and no analytics. The only network request after the page loads is for
+the matting model in `vendor/`, fetched from this same site the first time background
+replacement is used and cached afterwards — no third-party host is involved, and no image
+is ever sent anywhere. Conversions and matting both run on the CPU in the tab. The camera stream is drawn straight to a canvas in
 the same tab and every track is stopped when the viewfinder closes; no frame is uploaded,
 stored or kept after you close the window. As a side effect of going through a canvas, all
 metadata — EXIF, GPS coordinates, camera serial numbers — is dropped from the output.
