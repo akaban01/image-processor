@@ -31,6 +31,7 @@ import {
   matchesStandard,
   standardById,
 } from './lib/documents.js';
+import { centeredCrop, cropCoversStandard, guideGeometry } from './lib/framing.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -48,6 +49,22 @@ const el = {
   documentRules: $('document-rules'),
   documentDrift: $('document-drift'),
   documentCaveat: $('document-caveat'),
+  cameraOpen: $('camera-open'),
+  camera: $('camera'),
+  cameraTitle: $('camera-title'),
+  cameraHelp: $('camera-help'),
+  cameraStage: $('camera-stage'),
+  cameraVideo: $('camera-video'),
+  cameraStill: $('camera-still'),
+  cameraGuide: $('camera-guide'),
+  cameraError: $('camera-error'),
+  cameraNote: $('camera-note'),
+  cameraDeviceField: $('camera-device-field'),
+  cameraDevice: $('camera-device'),
+  cameraShoot: $('camera-shoot'),
+  cameraRetake: $('camera-retake'),
+  cameraUse: $('camera-use'),
+  cameraClose: $('camera-close'),
   format: $('format'),
   formatHint: $('format-hint'),
   quality: $('quality'),
@@ -363,6 +380,11 @@ function syncDocumentPanel() {
   el.documentAppliedField.hidden = !standard;
   el.documentRulesField.hidden = !standard;
   el.documentCaveat.hidden = !standard;
+  el.cameraOpen.hidden = !standard || !cameraSupported();
+
+  // Dropping the standard while the viewfinder is open would leave a guide on
+  // screen for a shape nothing is being cropped to.
+  if (!standard && el.camera?.open) closeCamera();
 
   if (standard) {
     fillList(el.documentApplied, standard.requirements);
@@ -402,6 +424,282 @@ function renderCheck(item) {
   checkEl.textContent = check.ok
     ? `Fits the ${standard.short} spec — now check the photo itself against the list above.`
     : `Does not meet the ${standard.short} spec: ${check.issues.join(' ')}`;
+}
+
+/* ══ Guided camera capture ═════════════════════════════════════ */
+
+let cameraStream = null;
+/** @type {{blob: Blob, url: string, crop: object}|null} */
+let cameraShot = null;
+
+const cameraSupported = () => Boolean(navigator.mediaDevices?.getUserMedia)
+  && typeof el.camera?.showModal === 'function';
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svg(name, attributes) {
+  const node = document.createElementNS(SVG_NS, name);
+  for (const [key, value] of Object.entries(attributes)) {
+    node.setAttribute(key, String(value));
+  }
+  return node;
+}
+
+/**
+ * Draw the head outline over the preview.
+ *
+ * The SVG shares the standard's pixel grid, so every number comes straight
+ * from `guideGeometry` with no scaling maths in the middle.
+ */
+function drawGuide(standard) {
+  const g = guideGeometry(standard);
+  const unit = g.height / 150;
+
+  el.cameraGuide.setAttribute('viewBox', `0 0 ${g.width} ${g.height}`);
+  el.cameraStage.style.setProperty('--shot-aspect', `${g.width} / ${g.height}`);
+
+  const label = (x, y, text, anchor = 'start') => {
+    const node = svg('text', {
+      x, y, class: 'guide-label', 'text-anchor': anchor, 'font-size': unit * 5,
+    });
+    node.textContent = text;
+    return node;
+  };
+
+  el.cameraGuide.replaceChildren(
+    // The band the chin has to land in for the head to be 70–80% of the frame.
+    svg('rect', {
+      x: 0, y: g.chinMin, width: g.width, height: g.chinMax - g.chinMin, class: 'guide-band',
+    }),
+    svg('line', {
+      x1: 0, y1: g.chinMin, x2: g.width, y2: g.chinMin, class: 'guide-edge',
+    }),
+    svg('line', {
+      x1: 0, y1: g.chinMax, x2: g.width, y2: g.chinMax, class: 'guide-edge',
+    }),
+    // Crown ticks rather than a full line: the top of the head is a point to
+    // hit, not a horizon to sit on.
+    svg('line', { x1: 0, y1: g.crown, x2: g.width * 0.14, y2: g.crown, class: 'guide-tick' }),
+    svg('line', {
+      x1: g.width * 0.86, y1: g.crown, x2: g.width, y2: g.crown, class: 'guide-tick',
+    }),
+    svg('line', { x1: 0, y1: g.eyeLine, x2: g.width, y2: g.eyeLine, class: 'guide-eyes' }),
+    svg('ellipse', { cx: g.head.cx, cy: g.head.cy, rx: g.head.rx, ry: g.head.ry, class: 'guide-head' }),
+    // Clear of the crown tick, which occupies the same corner.
+    label(g.width * 0.16, g.crown - unit * 2, 'crown'),
+    label(unit * 2, g.eyeLine - unit * 2, 'eyes'),
+    label(unit * 2, g.chinMax + unit * 6, 'chin'),
+  );
+}
+
+function setCameraError(message) {
+  el.cameraError.hidden = !message;
+  el.cameraError.textContent = message || '';
+}
+
+function setCameraNote(message) {
+  el.cameraNote.hidden = !message;
+  el.cameraNote.textContent = message || '';
+}
+
+/** Turn a getUserMedia rejection into something worth reading. */
+function cameraMessage(error) {
+  switch (error?.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'Camera access was refused. Allow it in the browser’s address bar, then try again.';
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'No camera was found on this device.';
+    case 'NotReadableError':
+      return 'The camera is already in use by another app.';
+    default:
+      return `The camera could not be started: ${error?.message || 'unknown error'}`;
+  }
+}
+
+function stopStream() {
+  for (const track of cameraStream?.getTracks() || []) track.stop();
+  cameraStream = null;
+  el.cameraVideo.srcObject = null;
+}
+
+/** Warn when the camera cannot fill the standard without being enlarged. */
+function checkResolution(width, height) {
+  const standard = standardById(settings.documentId);
+  if (!standard || !width || !height) return;
+
+  const crop = centeredCrop(width, height, standard.width / standard.height);
+  setCameraNote(
+    cropCoversStandard(crop, standard)
+      ? ''
+      : `This camera only offers ${crop.sw} × ${crop.sh} inside the frame, so the photo `
+        + `will be enlarged to ${standard.width} × ${standard.height} and may look soft.`,
+  );
+}
+
+async function listCameras() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+
+  let devices = [];
+  try {
+    devices = await navigator.mediaDevices.enumerateDevices();
+  } catch {
+    return;
+  }
+
+  // Labels stay empty until permission is granted, which is why this runs
+  // after the stream is live rather than before.
+  const cameras = devices.filter((device) => device.kind === 'videoinput');
+  el.cameraDeviceField.hidden = cameras.length < 2;
+  if (cameras.length < 2) return;
+
+  const active = cameraStream?.getVideoTracks()[0]?.getSettings?.().deviceId;
+  el.cameraDevice.replaceChildren(
+    ...cameras.map((device, index) => new Option(device.label || `Camera ${index + 1}`, device.deviceId)),
+  );
+  if (active) el.cameraDevice.value = active;
+}
+
+async function startStream(deviceId) {
+  stopStream();
+  setCameraError('');
+  setCameraNote('');
+  el.cameraShoot.disabled = true;
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: deviceId
+        ? { deviceId: { exact: deviceId } }
+        // A front camera at as many pixels as it will give: the frame gets
+        // cropped to the standard's aspect, so height is what runs out first.
+        : { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1920 } },
+    });
+  } catch (error) {
+    setCameraError(cameraMessage(error));
+    return;
+  }
+
+  el.cameraVideo.srcObject = cameraStream;
+  try {
+    await el.cameraVideo.play();
+  } catch {
+    /* Autoplay of a muted local stream is allowed; a refusal is not fatal. */
+  }
+
+  el.cameraShoot.disabled = false;
+  checkResolution(el.cameraVideo.videoWidth, el.cameraVideo.videoHeight);
+  await listCameras();
+}
+
+function showLiveView() {
+  if (cameraShot) URL.revokeObjectURL(cameraShot.url);
+  cameraShot = null;
+
+  el.cameraStill.hidden = true;
+  el.cameraStill.removeAttribute('src');
+  el.cameraVideo.hidden = false;
+  el.cameraShoot.hidden = false;
+  el.cameraRetake.hidden = true;
+  el.cameraUse.hidden = true;
+}
+
+async function openCamera() {
+  const standard = standardById(settings.documentId);
+  if (!standard || !cameraSupported()) return;
+
+  el.cameraTitle.textContent = `Take a photo for ${standard.short}`;
+  el.cameraHelp.textContent =
+    'Line the top of the head up with the side ticks and put the chin inside the shaded '
+    + 'band. Face the camera square on, against a plain white wall, in even light.';
+  drawGuide(standard);
+  showLiveView();
+  setCameraError('');
+  setCameraNote('');
+
+  el.camera.showModal();
+  await startStream();
+}
+
+function closeCamera() {
+  if (el.camera.open) el.camera.close();
+  // The `close` event does the tearing down, so re-entry is always clean.
+}
+
+/**
+ * Freeze the frame that is on screen.
+ *
+ * The preview is `object-fit: cover` inside a box of the standard's aspect
+ * ratio, so cutting the same centred rectangle out of the video is what makes
+ * the file match what the person was looking at.
+ */
+function takeShot() {
+  const standard = standardById(settings.documentId);
+  const video = el.cameraVideo;
+  if (!standard || !video.videoWidth || !video.videoHeight) return;
+
+  const crop = centeredCrop(video.videoWidth, video.videoHeight, standard.width / standard.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = crop.sw;
+  canvas.height = crop.sh;
+  canvas.getContext('2d').drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, crop.sw, crop.sh);
+
+  canvas.toBlob((blob) => {
+    if (!blob) {
+      setCameraError('The frame could not be captured. Try again.');
+      return;
+    }
+
+    cameraShot = { blob, url: URL.createObjectURL(blob), crop };
+    el.cameraStill.src = cameraShot.url;
+    el.cameraStill.hidden = false;
+    el.cameraVideo.hidden = true;
+    el.cameraShoot.hidden = true;
+    el.cameraRetake.hidden = false;
+    el.cameraUse.hidden = false;
+    // PNG keeps the capture lossless, so the only lossy step is the single
+    // encode the conversion does afterwards.
+  }, 'image/png');
+}
+
+/** Hand the capture to the normal pipeline and convert it straight away. */
+function useShot() {
+  if (!cameraShot) return;
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const file = new File([cameraShot.blob], `photo-${stamp}.png`, {
+    type: 'image/png',
+    lastModified: Date.now(),
+  });
+
+  closeCamera();
+  addFiles([file]);
+  convertAll();
+}
+
+function bindCamera() {
+  if (!cameraSupported()) return;
+
+  el.cameraOpen.addEventListener('click', openCamera);
+  el.cameraShoot.addEventListener('click', takeShot);
+  el.cameraRetake.addEventListener('click', showLiveView);
+  el.cameraUse.addEventListener('click', useShot);
+  el.cameraClose.addEventListener('click', closeCamera);
+  el.cameraDevice.addEventListener('change', () => startStream(el.cameraDevice.value));
+
+  // Covers the close button, Escape, and anything else that dismisses the
+  // dialog — the camera light must never outlive the window that opened it.
+  el.camera.addEventListener('close', () => {
+    stopStream();
+    showLiveView();
+  });
+
+  el.cameraVideo.addEventListener('loadedmetadata', () => {
+    checkResolution(el.cameraVideo.videoWidth, el.cameraVideo.videoHeight);
+  });
+
+  window.addEventListener('pagehide', stopStream);
 }
 
 /* ══ Items ═════════════════════════════════════════════════════ */
@@ -915,7 +1213,7 @@ function bindActions() {
     } else if (modifier && event.key.toLowerCase() === 's') {
       event.preventDefault();
       if (!el.downloadAll.disabled) downloadAll();
-    } else if (event.key === 'Escape' && busy && !typing && !el.compare.open) {
+    } else if (event.key === 'Escape' && busy && !typing && !el.compare.open && !el.camera.open) {
       cancelRun();
     }
   });
@@ -987,6 +1285,7 @@ function setupInstall() {
   bindIntake();
   bindSettings();
   bindActions();
+  bindCamera();
   writeSettings(settings);
   syncUI();
   refreshControls();

@@ -15,7 +15,7 @@
  * Bump CACHE when the file list changes — the old cache is deleted on activate.
  */
 
-const CACHE = 'image-converter-v5';
+const CACHE = 'image-converter-v6';
 
 const PRECACHE = [
   './',
@@ -32,6 +32,7 @@ const PRECACHE = [
   'js/lib/dpi.js',
   'js/lib/encode.js',
   'js/lib/formats.js',
+  'js/lib/framing.js',
   'js/lib/geometry.js',
   'js/lib/intake.js',
   'js/lib/naming.js',

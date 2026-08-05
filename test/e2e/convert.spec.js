@@ -267,6 +267,68 @@ test('a standard survives a reload, and settings that drift from it are flagged'
   await expect(page.locator('#document-drift')).toBeHidden();
 });
 
+test('the camera button appears only while a standard is selected', async ({ page }) => {
+  await expect(page.locator('#camera-open')).toBeHidden();
+
+  await page.selectOption('#document-standard', 'umrah-hajj-print');
+  await expect(page.locator('#camera-open')).toBeVisible();
+
+  await page.selectOption('#document-standard', 'none');
+  await expect(page.locator('#camera-open')).toBeHidden();
+});
+
+test('the guided capture converts straight into a compliant photo', async ({ page }) => {
+  await page.selectOption('#document-standard', 'umrah-hajj-evisa');
+  await page.click('#camera-open');
+
+  await expect(page.locator('#camera')).toBeVisible();
+  await expect(page.locator('#camera-title')).toHaveText('Take a photo for Umrah / Hajj eVisa');
+  await expect(page.locator('#camera-error')).toBeHidden();
+  // The guide is drawn on the standard's own grid, so a square standard puts
+  // the head outline dead centre.
+  await expect(page.locator('#camera-guide')).toHaveAttribute('viewBox', '0 0 600 600');
+  await expect(page.locator('#camera-guide ellipse')).toHaveAttribute('cx', '300');
+
+  await page.click('#camera-shoot');
+  await expect(page.locator('#camera-still')).toBeVisible();
+  await expect(page.locator('#camera-video')).toBeHidden();
+
+  // A retake goes back to the live view rather than stacking captures.
+  await page.click('#camera-retake');
+  await expect(page.locator('#camera-video')).toBeVisible();
+  await expect(page.locator('#camera-still')).toBeHidden();
+
+  await page.click('#camera-shoot');
+  await page.click('#camera-use');
+
+  await expect(page.locator('#camera')).toBeHidden();
+  await expect(page.locator('.card')).toHaveCount(1);
+  await expect(page.locator('#convert')).toBeEnabled({ timeout: 30_000 });
+
+  const card = firstCard(page);
+  await expect(card).toHaveAttribute('data-state', 'done');
+  expect(parseConverted(await card.locator('.converted').textContent()))
+    .toMatchObject({ width: 600, height: 600, format: 'JPEG' });
+  await expect(card.locator('.card-check')).toHaveAttribute('data-ok', 'true');
+});
+
+test('closing the viewfinder releases the camera', async ({ page }) => {
+  await page.selectOption('#document-standard', 'umrah-hajj-evisa');
+  await page.click('#camera-open');
+  await expect(page.locator('#camera-shoot')).toBeEnabled();
+
+  await page.click('#camera-close');
+  await expect(page.locator('#camera')).toBeHidden();
+
+  // Every track stopped means the camera light goes out; a live track here is
+  // the difference between a tool and something people uninstall.
+  const live = await page.evaluate(() => {
+    const video = document.getElementById('camera-video');
+    return (video.srcObject?.getTracks() || []).filter((track) => track.readyState === 'live').length;
+  });
+  expect(live).toBe(0);
+});
+
 test('the print standard records the photo’s physical size', async ({ page }) => {
   await addImages(page, [pngUpload('print.png', { width: 500, height: 500 })]);
 
