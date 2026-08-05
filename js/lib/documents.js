@@ -142,7 +142,9 @@ export function standardById(id) {
  * @returns {object} a partial settings object, ready for `applyPreset`
  */
 export function standardSettings(standard) {
-  if (!standard) return { documentId: NO_STANDARD, dpi: 0 };
+  // Clearing the standard also puts away the controls that only exist inside
+  // that workflow, so the settings they drive go with them.
+  if (!standard) return { documentId: NO_STANDARD, dpi: 0, removeBackground: false };
 
   return {
     documentId: standard.id,

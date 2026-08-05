@@ -51,6 +51,11 @@ export function makePng({ width = 240, height = 160, noise = true, alpha = 255 }
     }
   }
 
+  return pngFrom(raw, width, height);
+}
+
+/** Wrap filtered RGBA scanlines in the PNG container. */
+function pngFrom(raw, width, height) {
   const header = new Uint8Array(13);
   const view = new DataView(header.buffer);
   view.setUint32(0, width);
@@ -69,7 +74,60 @@ export function makePng({ width = 240, height = 160, noise = true, alpha = 255 }
   ]);
 }
 
+/**
+ * A stand-in portrait: a subject in front of a plain wall, which is the only
+ * picture the background matte claims to handle.
+ *
+ * @param {object} [options]
+ * @param {number} [options.width]
+ * @param {number} [options.height]
+ * @param {[number, number, number]} [options.wall]
+ * @param {[number, number, number]} [options.subject]
+ * @returns {Buffer}
+ */
+export function makePortraitPng({
+  width = 300,
+  height = 300,
+  wall = [80, 125, 205],
+  subject = [38, 32, 44],
+} = {}) {
+  const raw = new Uint8Array(height * (1 + width * 4));
+  let offset = 0;
+  let seed = 4242;
+
+  const headCx = width / 2;
+  const headCy = height * 0.45;
+  const headRx = width * 0.22;
+  const headRy = height * 0.3;
+
+  for (let y = 0; y < height; y++) {
+    raw[offset++] = 0;
+    for (let x = 0; x < width; x++) {
+      const inHead = ((x - headCx) / headRx) ** 2 + ((y - headCy) / headRy) ** 2 <= 1;
+      const inShoulders = y > height * 0.82 && Math.abs(x - headCx) < width * 0.36;
+      const colour = inHead || inShoulders ? subject : wall;
+
+      // A little grain, so the wall is a real wall rather than a flat fill the
+      // matte could only ever succeed on.
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      const jitter = ((seed >> 16) % 7) - 3;
+
+      raw[offset++] = Math.max(0, Math.min(255, colour[0] + jitter));
+      raw[offset++] = Math.max(0, Math.min(255, colour[1] + jitter));
+      raw[offset++] = Math.max(0, Math.min(255, colour[2] + jitter));
+      raw[offset++] = 255;
+    }
+  }
+
+  return pngFrom(raw, width, height);
+}
+
 /** A Playwright `setInputFiles` payload. */
 export function pngUpload(name, options) {
   return { name, mimeType: 'image/png', buffer: makePng(options) };
+}
+
+/** A Playwright `setInputFiles` payload carrying a portrait on a plain wall. */
+export function portraitUpload(name, options) {
+  return { name, mimeType: 'image/png', buffer: makePortraitPng(options) };
 }

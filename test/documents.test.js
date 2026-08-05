@@ -75,7 +75,11 @@ test('clearing the standard keeps the pixels but drops the marker', () => {
   assert.equal(cleared.documentId, NO_STANDARD);
   assert.equal(cleared.dpi, 0);
   assert.equal(cleared.resize.width, 600, 'the size the user can now edit is still there');
-  assert.deepEqual(standardSettings(null), { documentId: NO_STANDARD, dpi: 0 });
+  assert.deepEqual(standardSettings(null), {
+    documentId: NO_STANDARD,
+    dpi: 0,
+    removeBackground: false,
+  });
 });
 
 test('rotation and flips survive applying a standard', () => {

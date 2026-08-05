@@ -1,6 +1,30 @@
 import { test, expect } from '@playwright/test';
 
-import { pngUpload } from './fixtures.js';
+import { pngUpload, portraitUpload } from './fixtures.js';
+
+/**
+ * Decode a card's converted file and read pixels back out of it, which is the
+ * only honest way to assert that a background really was replaced.
+ */
+async function samplePixels(page, points) {
+  return page.evaluate(async (spots) => {
+    const image = new Image();
+    image.src = document.querySelector('.card .download').href;
+    await image.decode();
+
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0);
+
+    return spots.map(([fx, fy]) => {
+      const x = Math.round(fx * (canvas.width - 1));
+      const y = Math.round(fy * (canvas.height - 1));
+      return [...context.getImageData(x, y, 1, 1).data].slice(0, 3);
+    });
+  }, points);
+}
 
 /** Parse a card's "1920 × 1080 · WebP · 40 KB" line. */
 function parseConverted(text) {
@@ -265,6 +289,68 @@ test('a standard survives a reload, and settings that drift from it are flagged'
   await page.click('#document-reapply');
   await expect(page.locator('#target-width')).toHaveValue('600');
   await expect(page.locator('#document-drift')).toBeHidden();
+});
+
+test('the background is replaced with the standard’s white', async ({ page }) => {
+  await addImages(page, [portraitUpload('me.png', { width: 400, height: 400 })]);
+
+  await page.selectOption('#document-standard', 'umrah-hajj-evisa');
+  await expect(page.locator('#background-removal')).toBeVisible();
+  await expect(page.locator('#tolerance-row')).toBeHidden();
+
+  await page.check('#remove-background');
+  await expect(page.locator('#tolerance-row')).toBeVisible();
+  await expect(page.locator('#tolerance-value')).toHaveText('30');
+
+  await convert(page);
+  await expect(firstCard(page)).toHaveAttribute('data-state', 'done');
+
+  // Corners of the blue wall, then the middle of the head.
+  const [topLeft, topRight, sideLeft, face] =
+    await samplePixels(page, [[0.02, 0.02], [0.98, 0.02], [0.02, 0.3], [0.5, 0.45]]);
+
+  for (const [name, pixel] of [['top left', topLeft], ['top right', topRight], ['side', sideLeft]]) {
+    expect(pixel.every((channel) => channel > 244), `${name} was ${pixel}`).toBe(true);
+  }
+  expect(face.every((channel) => channel < 110), `the face was ${face}`).toBe(true);
+
+  // A clean separation says nothing on the card; only a failed one speaks up.
+  await expect(firstCard(page).locator('.card-note')).toBeHidden();
+});
+
+test('the background stays put when the option is off', async ({ page }) => {
+  await addImages(page, [portraitUpload('me.png', { width: 400, height: 400 })]);
+  await page.selectOption('#document-standard', 'umrah-hajj-evisa');
+  await convert(page);
+
+  const [corner] = await samplePixels(page, [[0.02, 0.02]]);
+  expect(corner[2]).toBeGreaterThan(corner[0]);
+  expect(corner.every((channel) => channel > 244), `corner was ${corner}`).toBe(false);
+});
+
+test('a background that cannot be separated is called out', async ({ page }) => {
+  // A subject the same colour as the wall: the flood swallows the lot, and
+  // that has to be said rather than quietly shipped.
+  await addImages(page, [
+    portraitUpload('washed-out.png', { width: 400, height: 400, subject: [82, 127, 207] }),
+  ]);
+
+  await page.selectOption('#document-standard', 'umrah-hajj-evisa');
+  await page.check('#remove-background');
+  await convert(page);
+
+  const note = firstCard(page).locator('.card-note');
+  await expect(note).toBeVisible();
+  await expect(note).toContainText('could not be separated cleanly');
+});
+
+test('clearing the standard puts the background option away', async ({ page }) => {
+  await page.selectOption('#document-standard', 'umrah-hajj-evisa');
+  await page.check('#remove-background');
+
+  await page.selectOption('#document-standard', 'none');
+  await expect(page.locator('#background-removal')).toBeHidden();
+  await expect(page.locator('#remove-background')).not.toBeChecked();
 });
 
 test('the camera button appears only while a standard is selected', async ({ page }) => {

@@ -49,6 +49,11 @@ const el = {
   documentRules: $('document-rules'),
   documentDrift: $('document-drift'),
   documentCaveat: $('document-caveat'),
+  backgroundRemoval: $('background-removal'),
+  removeBackground: $('remove-background'),
+  toleranceRow: $('tolerance-row'),
+  backgroundTolerance: $('background-tolerance'),
+  toleranceValue: $('tolerance-value'),
   cameraOpen: $('camera-open'),
   camera: $('camera'),
   cameraTitle: $('camera-title'),
@@ -191,6 +196,8 @@ function readSettings() {
     documentId: el.documentStandard.value,
     // Set by the chosen standard rather than by a control of its own.
     dpi: settings.dpi,
+    removeBackground: el.removeBackground.checked,
+    backgroundTolerance: Number(el.backgroundTolerance.value),
     rotate: Number(document.querySelector('[data-rotate][aria-checked="true"]')?.dataset.rotate || 0),
     flipH: el.flipH.getAttribute('aria-pressed') === 'true',
     flipV: el.flipV.getAttribute('aria-pressed') === 'true',
@@ -218,6 +225,8 @@ function writeSettings(next) {
   el.background.value = next.background;
   el.template.value = next.template;
   el.documentStandard.value = next.documentId;
+  el.removeBackground.checked = next.removeBackground;
+  el.backgroundTolerance.value = String(next.backgroundTolerance);
 
   for (const button of document.querySelectorAll('[data-rotate]')) {
     button.setAttribute('aria-checked', String(Number(button.dataset.rotate) === next.rotate));
@@ -381,6 +390,9 @@ function syncDocumentPanel() {
   el.documentRulesField.hidden = !standard;
   el.documentCaveat.hidden = !standard;
   el.cameraOpen.hidden = !standard || !cameraSupported();
+  el.backgroundRemoval.hidden = !standard;
+  el.toleranceRow.hidden = !settings.removeBackground;
+  el.toleranceValue.textContent = String(settings.backgroundTolerance);
 
   // Dropping the standard while the viewfinder is open would leave a guide on
   // screen for a shape nothing is being cropped to.
@@ -852,6 +864,14 @@ function updateItem(item) {
   }
   if (result.rescaled) notes.push('Scaled down further to fit the size budget.');
   if (result.clamped) notes.push('Reduced to stay within this browser’s canvas limit.');
+  if (result.backgroundReplaced && !result.backgroundPlausible) {
+    // Either almost nothing was flooded or almost everything was: both mean
+    // the picture was not a subject in front of a plain wall.
+    notes.push(
+      `The background could not be separated cleanly — ${Math.round(result.backgroundCoverage * 100)}% `
+      + 'of the frame was repainted. Compare before and after before using this one.',
+    );
+  }
   noteEl.hidden = !notes.length;
   noteEl.textContent = notes.join(' ');
 
@@ -1138,6 +1158,7 @@ function bindSettings() {
   const inputs = [
     el.format, el.quality, el.targetEnabled, el.targetSize, el.resizeMode, el.scale,
     el.width, el.height, el.edge, el.position, el.noUpscale, el.background, el.template,
+    el.removeBackground, el.backgroundTolerance,
   ];
 
   for (const input of inputs) {
