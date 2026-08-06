@@ -267,6 +267,47 @@ kbd {
 }
 kbd + kbd { margin-left: 2px; }
 
+/* ══ Privacy notice ═════════════════════════════════════════════ */
+
+/*
+ * Deliberately above the dropzone rather than in the footer. People are about
+ * to hand this thing a photograph of their face for a government form, and the
+ * answer to "where does it go" should arrive before the question does.
+ */
+.privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: .7rem;
+  padding: .8rem 1rem;
+  margin-bottom: 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--ok) 35%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--ok) 8%, var(--panel));
+  font-size: .82rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.privacy strong { color: var(--text); }
+
+.privacy-mark {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: .1rem;
+  fill: none;
+  stroke: var(--ok);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.camera-privacy {
+  margin-top: .7rem;
+  font-size: .76rem;
+  line-height: 1.45;
+  color: var(--faint);
+}
+
 /* ══ Panels & fields ════════════════════════════════════════════ */
 
 .panel {
@@ -889,5 +930,6 @@ footer {
 }
 
 @media print {
-  .runbar, .dropzone, .presets-panel, .topbar-actions, .card-actions { display: none; }
+  .runbar, .dropzone, .presets-panel, .topbar-actions, .card-actions,
+  .privacy { display: none; }
 }

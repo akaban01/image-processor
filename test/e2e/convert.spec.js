@@ -72,6 +72,19 @@ test('loads and reports the worker pipeline', async ({ page }) => {
   await expect(page.locator('#convert')).toBeDisabled();
 });
 
+test('the page says where the photos go before it asks for one', async ({ page }) => {
+  // Above the dropzone, not buried in the footer: someone about to hand over a
+  // photograph of their face deserves the answer before the question.
+  const privacy = page.locator('.privacy');
+  await expect(privacy).toBeVisible();
+  await expect(privacy).toContainText('never leave this device');
+  await expect(privacy).toContainText('Nothing is uploaded');
+
+  const dropzone = await page.locator('#dropzone').boundingBox();
+  const notice = await privacy.boundingBox();
+  expect(notice.y).toBeLessThan(dropzone.y);
+});
+
 test('converts a single image to WebP', async ({ page }) => {
   await addImages(page, [pngUpload('photo.png', { width: 320, height: 240 })]);
 
@@ -414,6 +427,7 @@ test('the guided capture converts straight into a compliant photo', async ({ pag
 
   await expect(page.locator('#camera')).toBeVisible();
   await expect(page.locator('#camera-title')).toHaveText('Take a photo for Umrah / Hajj eVisa');
+  await expect(page.locator('.camera-privacy')).toContainText('stays in this tab');
   await expect(page.locator('#camera-error')).toBeHidden();
   // The guide is drawn on the standard's own grid, so a square standard puts
   // the head outline dead centre.

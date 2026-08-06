@@ -39,6 +39,20 @@
   </header>
 
   <main>
+    <!-- ── Privacy ───────────────────────────────────────────────── -->
+    <p class="privacy">
+      <svg class="privacy-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3 5 6v5.4c0 4.2 2.9 8.1 7 9.6 4.1-1.5 7-5.4 7-9.6V6l-7-3Z"/>
+        <path d="m9 11.8 2.1 2.2L15 10"/>
+      </svg>
+      <span>
+        <strong>Your photos never leave this device.</strong>
+        Resizing, background removal and the camera all run inside this browser tab,
+        on your own machine. Nothing is uploaded to a server — there is no server —
+        so there is nothing to delete afterwards and nobody else ever sees the photo.
+      </span>
+    </p>
+
     <!-- ── Intake ────────────────────────────────────────────────── -->
     <section id="dropzone" class="dropzone" tabindex="0" role="button"
              aria-label="Add images: click to browse, or drop files and folders here">
@@ -363,6 +377,10 @@
 
     <p id="camera-error" class="camera-error" role="alert" hidden></p>
     <p id="camera-note" class="camera-note" role="status" aria-live="polite" hidden></p>
+    <p class="camera-privacy">
+      The camera feed stays in this tab. No frame is uploaded, and nothing is kept
+      until you pick a photo.
+    </p>
 
     <div class="camera-actions">
       <div class="camera-device" id="camera-device-field" hidden>
