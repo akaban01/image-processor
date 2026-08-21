@@ -736,6 +736,95 @@ test('cancelling leaves the app usable and nothing spinning', async ({ page }) =
   await expect(page.locator('.card[data-state="done"]')).toHaveCount(8);
 });
 
+test('offers the converted image as base64 text', async ({ page }) => {
+  await addImages(page, [pngUpload('photo.png', { width: 40, height: 30 })]);
+  await convert(page);
+
+  const card = firstCard(page);
+  await card.locator('.base64').click();
+
+  const dialog = page.locator('#base64');
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('#base64-title')).toHaveText('photo.webp');
+
+  const text = page.locator('#base64-text');
+  await expect(text).toHaveValue(/^data:image\/webp;base64,[A-Za-z0-9+/]+=*$/);
+
+  // The text really is the file: decoding it back gives the same pixels the
+  // download link carries.
+  const size = await page.evaluate(async () => {
+    const image = new Image();
+    image.src = document.querySelector('#base64-text').value;
+    await image.decode();
+    return [image.naturalWidth, image.naturalHeight];
+  });
+  expect(size).toEqual([40, 30]);
+
+  await expect(page.locator('#base64-meta')).toContainText('characters');
+
+  // The text describes one particular result, so a new run retires it.
+  await page.keyboard.press('Control+Enter');
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('#convert')).toBeEnabled({ timeout: 30_000 });
+});
+
+test('the base64 wrapping is switchable and remembered', async ({ page }) => {
+  await addImages(page, [pngUpload('photo.png', { width: 20, height: 10 })]);
+  await convert(page);
+
+  await firstCard(page).locator('.base64').click();
+  const text = page.locator('#base64-text');
+
+  await page.selectOption('#base64-format', 'html');
+  await expect(text).toHaveValue(/^<img src="data:image\/webp;base64,.+" alt="photo" width="20" height="10">$/);
+
+  await page.selectOption('#base64-format', 'css');
+  await expect(text).toHaveValue(/^background-image: url\("data:image\/webp;base64,.+"\);$/);
+
+  await page.selectOption('#base64-format', 'markdown');
+  await expect(text).toHaveValue(/^!\[photo\]\(data:image\/webp;base64,.+\)$/);
+
+  await page.selectOption('#base64-format', 'raw');
+  await expect(text).toHaveValue(/^[A-Za-z0-9+/]+=*$/);
+
+  await page.click('#base64-close');
+  await expect(page.locator('#base64')).toBeHidden();
+
+  // The choice is a setting, so it survives a reload.
+  await page.reload();
+  await page.waitForSelector('html[data-ready="true"]');
+  await expect(page.locator('#base64-format')).toHaveValue('raw');
+});
+
+test('copies the base64 text to the clipboard', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+
+  await addImages(page, [pngUpload('photo.png', { width: 16, height: 16 })]);
+  await convert(page);
+
+  await firstCard(page).locator('.base64').click();
+  await page.click('#base64-copy');
+
+  await expect(page.locator('#base64-status')).toContainText('Copied');
+  const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clipboard).toMatch(/^data:image\/webp;base64,/);
+  expect(clipboard).toEqual(await page.locator('#base64-text').inputValue());
+});
+
+test('saves the base64 text as a file', async ({ page }) => {
+  await addImages(page, [pngUpload('photo.png', { width: 16, height: 16 })]);
+  await convert(page);
+
+  await firstCard(page).locator('.base64').click();
+
+  const download = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#base64-save'),
+  ]).then(([event]) => event);
+
+  expect(download.suggestedFilename()).toBe('photo.webp.txt');
+});
+
 test('the keyboard shortcut converts', async ({ page }) => {
   await addImages(page, [pngUpload('key.png', { width: 100, height: 100 })]);
 

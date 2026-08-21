@@ -851,6 +851,83 @@ img.compare-after {
   font-variant-numeric: tabular-nums;
 }
 
+/* ══ Base64 dialog ══════════════════════════════════════════════ */
+
+dialog.base64 {
+  width: min(760px, 94vw);
+  padding: 1rem 1.15rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+dialog.base64::backdrop { background: rgb(0 0 0 / .62); backdrop-filter: blur(2px); }
+
+.base64-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: .85rem;
+}
+.base64-head h2 {
+  font-size: .95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.base64-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem .7rem;
+  margin-bottom: .7rem;
+}
+.base64-controls label { font-size: .82rem; color: var(--muted); }
+.base64-controls select { width: auto; min-width: 11rem; }
+.base64-controls .hint { flex: 1 1 14rem; margin: 0; }
+
+#base64-text {
+  width: 100%;
+  height: min(38vh, 260px);
+  resize: vertical;
+  padding: .6rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .76rem;
+  line-height: 1.45;
+  /* The text is one very long token; without this it scrolls sideways. */
+  overflow-wrap: anywhere;
+}
+
+.base64-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-top: .7rem;
+}
+.base64-meta {
+  flex: 1;
+  font-size: .78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.base64-status {
+  margin-top: .45rem;
+  min-height: 1.1rem;
+  font-size: .78rem;
+  color: var(--muted);
+}
+.base64-status[data-kind="done"] { color: var(--ok); }
+.base64-status[data-kind="warn"] { color: var(--warn); }
+.base64-status[data-kind="error"] { color: var(--danger); }
+
 /* ══ Footer ═════════════════════════════════════════════════════ */
 
 footer {
@@ -877,6 +954,8 @@ footer {
   .runbar { bottom: 0; border-radius: var(--radius) var(--radius) 0 0; }
   .runbar-actions { width: 100%; }
   .runbar-actions .btn { flex: 1; }
+  .base64-actions { flex-wrap: wrap; }
+  .base64-meta { flex: 1 0 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

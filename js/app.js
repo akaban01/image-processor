@@ -7,6 +7,14 @@
 
 import { AUTO_FORMAT, AUTO_MIME, FORMATS, formatByMime, supportedFormats } from './lib/formats.js';
 import { formatBytes, parseByteSize, sizeDelta } from './lib/bytes.js';
+import {
+  BASE64_FORMATS,
+  base64FormatById,
+  base64Length,
+  base64Snippet,
+  blobToBase64,
+  snippetFilename,
+} from './lib/base64.js';
 import { MIN_SEARCH_QUALITY } from './lib/encode.js';
 import { createZip } from './lib/zip.js';
 import { createPipeline } from './lib/pipeline.js';
@@ -123,6 +131,17 @@ const el = {
   compareClose: $('compare-close'),
   compareBeforeMeta: $('compare-before-meta'),
   compareAfterMeta: $('compare-after-meta'),
+  base64: $('base64'),
+  base64Title: $('base64-title'),
+  base64Format: $('base64-format'),
+  base64Summary: $('base64-summary'),
+  base64Text: $('base64-text'),
+  base64Note: $('base64-note'),
+  base64Meta: $('base64-meta'),
+  base64Copy: $('base64-copy'),
+  base64Save: $('base64-save'),
+  base64Close: $('base64-close'),
+  base64Status: $('base64-status'),
 };
 
 const THEME_KEY = 'image-converter:theme';
@@ -200,6 +219,7 @@ function readSettings() {
     targetBytes: parseByteSize(el.targetSize.value),
     background: el.background.value,
     template: el.template.value,
+    base64Format: el.base64Format.value,
     documentId: el.documentStandard.value,
     // Set by the chosen standard rather than by a control of its own.
     dpi: settings.dpi,
@@ -231,6 +251,7 @@ function writeSettings(next) {
   el.targetSize.value = next.targetBytes ? formatBytes(next.targetBytes) : '500 KB';
   el.background.value = next.background;
   el.template.value = next.template;
+  el.base64Format.value = next.base64Format;
   el.documentStandard.value = next.documentId;
   el.removeBackground.checked = next.removeBackground;
   el.backgroundTolerance.value = String(next.backgroundTolerance);
@@ -361,6 +382,12 @@ function buildStandards() {
   el.documentStandard.replaceChildren(
     new Option('None — my own settings', NO_STANDARD),
     ...PHOTO_STANDARDS.map((standard) => new Option(standard.label, standard.id)),
+  );
+}
+
+function buildBase64Formats() {
+  el.base64Format.replaceChildren(
+    ...BASE64_FORMATS.map((format) => new Option(format.label, format.id)),
   );
 }
 
@@ -855,6 +882,7 @@ function renderItem(item) {
 
   node.querySelector('.original').textContent = formatBytes(item.file.size);
   node.querySelector('.remove').addEventListener('click', () => removeItem(item.id));
+  node.querySelector('.base64').addEventListener('click', () => openBase64(item));
   thumb.addEventListener('click', () => openCompare(item));
 
   item.node = node;
@@ -866,6 +894,7 @@ function updateItem(item) {
   const errorEl = node.querySelector('.card-error');
   const noteEl = node.querySelector('.card-note');
   const link = node.querySelector('.download');
+  const base64Button = node.querySelector('.base64');
   const converted = node.querySelector('.converted');
   const thumb = node.querySelector('.thumb');
 
@@ -875,6 +904,7 @@ function updateItem(item) {
     errorEl.textContent = item.error;
     noteEl.hidden = true;
     link.hidden = true;
+    base64Button.hidden = true;
     converted.textContent = '';
     renderCheck(item);
     return;
@@ -932,6 +962,9 @@ function updateItem(item) {
   link.href = result.url;
   link.download = result.name;
   link.setAttribute('aria-label', `Download ${result.name}`);
+
+  base64Button.hidden = false;
+  base64Button.setAttribute('aria-label', `Base64 text for ${result.name}`);
 }
 
 function addFiles(files) {
@@ -994,6 +1027,7 @@ function removeItem(id) {
   if (index === -1) return;
 
   const [item] = items.splice(index, 1);
+  closeBase64(item);
   releaseItem(item);
   item.node.remove();
   refreshControls();
@@ -1001,6 +1035,7 @@ function removeItem(id) {
 
 function clearAll() {
   if (busy) return;
+  closeBase64();
   for (const item of items) releaseItem(item);
   items.length = 0;
   seenFiles.clear();
@@ -1153,6 +1188,7 @@ async function convertAll() {
   const startedAt = performance.now();
   let finished = 0;
 
+  closeBase64();
   for (const item of items) {
     item.error = null;
     setItemState(item, 'pending');
@@ -1297,6 +1333,142 @@ function openCompare(item) {
   el.compare.showModal();
 }
 
+/* ══ Base64 dialog ═════════════════════════════════════════════ */
+
+/**
+ * Beyond this many characters the textarea stops being a preview and starts
+ * being a rendering job: a 6 MB single-token line makes the dialog crawl. Copy
+ * and Save still use the whole string.
+ */
+const BASE64_PREVIEW = 200_000;
+
+/** The item whose text is on screen, and the wrapped text itself. */
+let base64Item = null;
+let snippetText = '';
+
+/**
+ * The text on screen describes one particular result, so it stops being true
+ * the moment that result is removed or reconverted.
+ *
+ * @param {Item} [item] close only if this item's text is showing
+ */
+function closeBase64(item) {
+  if (el.base64.open && (!item || base64Item === item)) el.base64.close();
+}
+
+function setBase64Status(message, kind = '') {
+  el.base64Status.textContent = message;
+  el.base64Status.dataset.kind = kind;
+}
+
+function setBase64Busy(busyNow) {
+  el.base64Copy.disabled = busyNow;
+  el.base64Save.disabled = busyNow;
+  el.base64Format.disabled = busyNow;
+}
+
+/** Re-wrap the already-encoded bytes; cheap enough to run on every change. */
+function renderBase64() {
+  const result = base64Item?.result;
+  if (!result?.base64) return;
+
+  const formatId = el.base64Format.value;
+  snippetText = base64Snippet(formatId, {
+    base64: result.base64,
+    mime: result.mime,
+    name: result.name,
+    width: result.width,
+    height: result.height,
+  });
+
+  const oversized = snippetText.length > BASE64_PREVIEW;
+  el.base64Text.value = oversized
+    ? `${snippetText.slice(0, BASE64_PREVIEW)}…`
+    : snippetText;
+  el.base64Note.hidden = !oversized;
+  el.base64Note.textContent = oversized
+    ? `Showing the first ${BASE64_PREVIEW.toLocaleString()} characters. Copy and `
+      + 'Save use the whole thing.'
+    : '';
+
+  el.base64Summary.textContent = base64FormatById(formatId).summary;
+  el.base64Meta.textContent =
+    `${snippetText.length.toLocaleString()} characters · `
+    + `${formatBytes(snippetText.length)} of text · `
+    + `${formatBytes(result.blob.size)} as a file`;
+  setBase64Busy(false);
+}
+
+async function openBase64(item) {
+  if (!item.result || typeof el.base64.showModal !== 'function') return;
+
+  base64Item = item;
+  snippetText = '';
+  el.base64Title.textContent = item.result.name;
+  el.base64Note.hidden = true;
+  setBase64Status('');
+  el.base64.showModal();
+
+  if (item.result.base64) {
+    renderBase64();
+    return;
+  }
+
+  // Encoding a large image takes a moment, and the dialog is already open.
+  setBase64Busy(true);
+  el.base64Text.value = '';
+  el.base64Summary.textContent = base64FormatById(el.base64Format.value).summary;
+  el.base64Meta.textContent =
+    `About ${base64Length(item.result.blob.size).toLocaleString()} characters`;
+  setBase64Status('Encoding…');
+
+  const result = item.result;
+  try {
+    const encoded = await blobToBase64(result.blob);
+    // A second conversion while this ran would have replaced the result the
+    // text belongs to, so cache onto that object rather than the item.
+    result.base64 = encoded;
+    if (base64Item !== item || item.result !== result || !el.base64.open) return;
+    setBase64Status('');
+    renderBase64();
+  } catch (error) {
+    if (base64Item !== item || !el.base64.open) return;
+    setBase64Busy(false);
+    el.base64Copy.disabled = true;
+    el.base64Save.disabled = true;
+    setBase64Status(`Could not encode this image: ${error.message}`, 'error');
+  }
+}
+
+async function copyBase64() {
+  if (!snippetText) return;
+
+  try {
+    await navigator.clipboard.writeText(snippetText);
+    setBase64Status(`Copied ${snippetText.length.toLocaleString()} characters.`, 'done');
+  } catch {
+    // Denied permission, or a page served over plain HTTP. Selecting the text
+    // at least leaves the user one keystroke away — unless it was truncated,
+    // in which case only saving gives them all of it.
+    el.base64Text.focus();
+    el.base64Text.select();
+    setBase64Status(
+      snippetText.length > BASE64_PREVIEW
+        ? 'The clipboard is unavailable here, and the preview is shortened — use Save as text.'
+        : 'The clipboard is unavailable here — the text is selected, press Ctrl/⌘ + C.',
+      'warn',
+    );
+  }
+}
+
+function saveBase64() {
+  if (!snippetText || !base64Item?.result) return;
+
+  const name = snippetFilename(base64Item.result.name, el.base64Format.value);
+  saveBlob(new Blob([snippetText], { type: 'text/plain;charset=utf-8' }), name);
+  setBase64Status(`Saved ${name}.`, 'done');
+}
+
 /* ══ Events ════════════════════════════════════════════════════ */
 
 function bindIntake() {
@@ -1370,6 +1542,13 @@ function bindSettings() {
     if (el.removeBackground.checked && modelUsable === null) warmSegmenter();
   });
 
+  // Not part of any preset — it changes the text on offer, never the image.
+  el.base64Format.addEventListener('change', () => {
+    commitSettings();
+    setBase64Status('');
+    renderBase64();
+  });
+
   el.documentStandard.addEventListener('change', () => chooseStandard(el.documentStandard.value));
   el.documentReapply.addEventListener('click', () => chooseStandard(settings.documentId));
 
@@ -1423,6 +1602,17 @@ function bindActions() {
   el.compareRange.addEventListener('input', () => setComparePosition(el.compareRange.value));
   el.compareClose.addEventListener('click', () => el.compare.close());
 
+  el.base64Copy.addEventListener('click', copyBase64);
+  el.base64Save.addEventListener('click', saveBase64);
+  el.base64Close.addEventListener('click', () => el.base64.close());
+  // Holding a multi-megabyte string open costs real memory once the dialog is
+  // gone; the encoded bytes stay cached on the result for the next open.
+  el.base64.addEventListener('close', () => {
+    base64Item = null;
+    snippetText = '';
+    el.base64Text.value = '';
+  });
+
   document.addEventListener('keydown', (event) => {
     const modifier = event.ctrlKey || event.metaKey;
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName);
@@ -1436,7 +1626,8 @@ function bindActions() {
     } else if (modifier && event.key.toLowerCase() === 's') {
       event.preventDefault();
       if (!el.downloadAll.disabled) downloadAll();
-    } else if (event.key === 'Escape' && busy && !typing && !el.compare.open && !el.camera.open) {
+    } else if (event.key === 'Escape' && busy && !typing && !el.compare.open && !el.camera.open
+               && !el.base64.open) {
       cancelRun();
     }
   });
@@ -1496,6 +1687,7 @@ function setupInstall() {
   settings = loadSettings();
   buildPresets();
   buildStandards();
+  buildBase64Formats();
 
   pipeline = createPipeline();
   el.engine.textContent = pipeline.mode === 'worker'

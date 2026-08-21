@@ -98,6 +98,12 @@ test('normalizeSettings will not accept an empty filename template', () => {
   assert.equal(normalizeSettings({ template: '  {name}-x.{ext} ' }).template, '{name}-x.{ext}');
 });
 
+test('normalizeSettings only takes a known base64 format', () => {
+  assert.equal(normalizeSettings({ base64Format: 'markdown' }).base64Format, 'markdown');
+  assert.equal(normalizeSettings({ base64Format: 'yaml' }).base64Format, 'data-url');
+  assert.equal(normalizeSettings({}).base64Format, 'data-url');
+});
+
 test('normalizeSettings falls back field by field to the supplied base', () => {
   const base = { ...defaultSettings(), quality: 0.4, format: 'image/png' };
   const settings = normalizeSettings({ quality: 'bogus' }, base);
