@@ -11,6 +11,7 @@ import { DEFAULT_TEMPLATE } from './naming.js';
 import { NO_STANDARD, STANDARD_IDS, standardSettings } from './documents.js';
 import { MAX_DPI } from './dpi.js';
 import { DEFAULT_TOLERANCE } from './matte.js';
+import { BASE64_FORMAT_IDS, DEFAULT_BASE64_FORMAT } from './base64.js';
 
 export const THEMES = ['auto', 'light', 'dark'];
 
@@ -26,6 +27,9 @@ export function defaultSettings() {
     targetBytes: 0,
     background: '#ffffff',
     template: DEFAULT_TEMPLATE,
+    // Which wrapping the base64 text is offered in; the image itself is
+    // unaffected, so this is a view setting that happens to be worth keeping.
+    base64Format: DEFAULT_BASE64_FORMAT,
     // Which document-photo standard the output is being held to, if any.
     documentId: NO_STANDARD,
     // Print resolution stamped into JPEG output; 0 leaves the file unmarked.
@@ -90,6 +94,7 @@ export function normalizeSettings(input, base = defaultSettings()) {
     template: typeof raw.template === 'string' && raw.template.trim()
       ? raw.template.trim()
       : base.template,
+    base64Format: oneOf(raw.base64Format, BASE64_FORMAT_IDS, base.base64Format),
     documentId: oneOf(raw.documentId, STANDARD_IDS, base.documentId),
     dpi: Math.round(clamp(raw.dpi, 0, MAX_DPI, base.dpi)),
     removeBackground: typeof raw.removeBackground === 'boolean'

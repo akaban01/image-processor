@@ -375,6 +375,34 @@
     </div>
   </dialog>
 
+  <!-- ── Base64 text ─────────────────────────────────────────────── -->
+  <dialog id="base64" class="base64" aria-labelledby="base64-title">
+    <div class="base64-head">
+      <h2 id="base64-title">Base64</h2>
+      <button id="base64-close" class="btn ghost small" type="button" aria-label="Close base64 text">Close</button>
+    </div>
+
+    <div class="base64-controls">
+      <label for="base64-format">Wrap as</label>
+      <select id="base64-format"></select>
+      <p class="hint" id="base64-summary"></p>
+    </div>
+
+    <label class="visually-hidden" for="base64-text">Base64 text</label>
+    <textarea id="base64-text" readonly spellcheck="false" autocomplete="off"
+              aria-describedby="base64-meta"></textarea>
+
+    <p id="base64-note" class="hint" hidden></p>
+
+    <div class="base64-actions">
+      <span id="base64-meta" class="base64-meta"></span>
+      <button id="base64-copy" class="btn primary" type="button">Copy</button>
+      <button id="base64-save" class="btn" type="button">Save as text</button>
+    </div>
+
+    <p id="base64-status" class="base64-status" role="status" aria-live="polite"></p>
+  </dialog>
+
   <template id="card-template">
     <li class="card" data-state="pending">
       <button class="thumb" type="button" aria-label="Compare before and after">
@@ -391,6 +419,7 @@
       </div>
       <div class="card-actions">
         <a class="btn small download" download hidden>Download</a>
+        <button class="btn small ghost base64" type="button" hidden>Base64</button>
         <button class="btn small ghost remove" type="button">Remove</button>
       </div>
     </li>
